@@ -12,11 +12,12 @@ from vggt.models.aggregator import Aggregator
 from vggt.heads.camera_head import CameraHead
 from vggt.heads.dpt_head import DPTHead
 from vggt.heads.track_head import TrackHead
+from vggt.heads.nlp_head import NLPHead
 
 
 class VGGT(nn.Module, PyTorchModelHubMixin):
     def __init__(self, img_size=518, patch_size=14, embed_dim=1024,
-                 enable_camera=True, enable_point=True, enable_depth=True, enable_track=True):
+                 enable_camera=False, enable_point=True, enable_depth=False, enable_track=False, enable_ncolor=True, enable_nlp=True):
         super().__init__()
 
         self.aggregator = Aggregator(img_size=img_size, patch_size=patch_size, embed_dim=embed_dim)
@@ -25,6 +26,11 @@ class VGGT(nn.Module, PyTorchModelHubMixin):
         self.point_head = DPTHead(dim_in=2 * embed_dim, output_dim=4, activation="inv_log", conf_activation="expp1") if enable_point else None
         self.depth_head = DPTHead(dim_in=2 * embed_dim, output_dim=2, activation="exp", conf_activation="expp1") if enable_depth else None
         self.track_head = TrackHead(dim_in=2 * embed_dim, patch_size=patch_size) if enable_track else None
+        
+        # color map. 6*(r,g,b) + a + confidence.
+        self.ncolor_head= DPTHead(dim_in=2 * embed_dim, output_dim=6*3+1+1, activation="exp", conf_activation="expp1") if enable_ncolor else None 
+        self.nmlp_head  = NLPHead(dim_in=2 * embed_dim) if enable_nlp else None
+
 
     def forward(self, images: torch.Tensor, query_points: torch.Tensor = None):
         """
@@ -81,6 +87,18 @@ class VGGT(nn.Module, PyTorchModelHubMixin):
                 )
                 predictions["world_points"] = pts3d
                 predictions["world_points_conf"] = pts3d_conf
+            
+            if self.ncolor_head is not None:
+                ncolor, ncolor_conf = self.ncolor_head(
+                    aggregated_tokens_list, images=images, patch_start_idx=patch_start_idx
+                )
+                predictions["ncolor"] = ncolor
+                predictions["ncolor_conf"] = ncolor_conf
+            if self.nmlp_head is not None:
+                nmlp = self.nmlp_head(
+                    aggregated_tokens_list, images=images, patch_start_idx=patch_start_idx
+                )
+                predictions["nmlp"] = nmlp
 
         if self.track_head is not None and query_points is not None:
             track_list, vis, conf = self.track_head(
