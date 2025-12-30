@@ -1,4 +1,4 @@
-expname = blender_paper_drums
+expname = drums_test
 basedir = ./logs
 datadir = ./data/raw_nerf/nerf_synthetic/drums
 dataset_type = blender

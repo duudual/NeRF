@@ -59,7 +59,12 @@ def create_nerf(args):
     if args.ft_path is not None and args.ft_path!='None':
         ckpts = [args.ft_path]
     else:
-        ckpts = [os.path.join(basedir, expname, f) for f in sorted(os.listdir(os.path.join(basedir, expname))) if 'tar' in f]
+        ckpt_dir = os.path.join(basedir, expname)
+        if os.path.exists(ckpt_dir):
+            ckpts = [os.path.join(ckpt_dir, f) for f in sorted(os.listdir(ckpt_dir)) if 'tar' in f]
+        else:
+            ckpts = []
+            print(f'Warning: Checkpoint directory {ckpt_dir} does not exist.')
 
     print('Found ckpts', ckpts)
     if len(ckpts) > 0 and not args.no_reload:

@@ -108,7 +108,7 @@ def raw2outputs(raw, z_vals, rays_d, raw_noise_std=0, white_bkgd=False, pytest=F
     rgb = torch.sigmoid(raw[...,:3])  # [N_rays, N_samples, 3]
     noise = 0.
     if raw_noise_std > 0.:
-        noise = torch.randn(raw[...,3].shape) * raw_noise_std
+        noise = torch.randn(raw[...,3].shape, device=raw.device) * raw_noise_std
 
         # Overwrite randomly sampled data if pytest
         if pytest:
@@ -197,7 +197,7 @@ def render_rays(ray_batch,
         upper = torch.cat([mids, z_vals[...,-1:]], -1)
         lower = torch.cat([z_vals[...,:1], mids], -1)
         # stratified samples in those intervals
-        t_rand = torch.rand(z_vals.shape)
+        t_rand = torch.rand(z_vals.shape, device=z_vals.device)
 
         # Pytest, overwrite u with numpy's fixed random numbers
         if pytest:
@@ -352,6 +352,13 @@ def render_path(render_poses, hwf, K, chunk, render_kwargs, gt_imgs=None, savedi
         disps.append(disp.cpu().numpy())
         if i==0:
             print(rgb.shape, disp.shape)
+            print(f"RGB min: {rgb.min().item():.4f}, max: {rgb.max().item():.4f}, mean: {rgb.mean().item():.4f}")
+            print(f"Acc min: {acc.min().item():.4f}, max: {acc.max().item():.4f}, mean: {acc.mean().item():.4f}")
+            # Check if all values are the same (gray image)
+            rgb_std = rgb.std().item()
+            print(f"RGB std: {rgb_std:.6f}")
+            if rgb_std < 0.01:
+                print("WARNING: RGB values have very low variance - image will appear gray!")
 
         if savedir is not None:
             rgb8 = to8b(rgbs[-1])

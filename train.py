@@ -112,6 +112,14 @@ def train():
     # Short circuit if only rendering out from trained model
     if args.render_only:
         print('RENDER ONLY')
+        
+        # Check if model was loaded (start > 0 means checkpoint was loaded)
+        if start == 0 and len([f for f in os.listdir(os.path.join(basedir, expname)) if 'tar' in f] if os.path.exists(os.path.join(basedir, expname)) else []) == 0:
+            print('ERROR: No checkpoints found for rendering!')
+            print(f'Please train the model first or specify a checkpoint with --ft_path')
+            print(f'Expected checkpoint directory: {os.path.join(basedir, expname)}')
+            return
+        
         with torch.no_grad():
             if args.render_test:
                 # render_test switches to test poses
