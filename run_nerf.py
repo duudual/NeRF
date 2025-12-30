@@ -10,5 +10,8 @@ from train import train
 
 if __name__=='__main__':
     np.random.seed(0)
-    torch.set_default_tensor_type('torch.cuda.FloatTensor')
+    # Use new API instead of deprecated set_default_tensor_type
+    if torch.cuda.is_available():
+        torch.set_default_device('cuda')
+    torch.set_default_dtype(torch.float32)
     train()
