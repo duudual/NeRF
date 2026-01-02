@@ -1,5 +1,6 @@
 import numpy as np
-import os, imageio
+import os
+import imageio.v2 as imageio
 
 
 ########## Slightly modified version of LLFF data loading code 
@@ -106,10 +107,9 @@ def _load_data(basedir, factor=None, width=None, height=None, load_imgs=True):
         return poses, bds
     
     def imread(f):
-        if f.endswith('png'):
-            return imageio.imread(f, ignoregamma=True)
-        else:
-            return imageio.imread(f)
+        # imageio.v2 doesn't support ignoregamma parameter
+        # PNG files are read with gamma correction applied by default
+        return imageio.imread(f)
         
     imgs = imgs = [imread(f)[...,:3]/255. for f in imgfiles]
     imgs = np.stack(imgs, -1)  

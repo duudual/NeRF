@@ -1,4 +1,4 @@
-expname = blender_paper_ficus
+expname = ficus_test
 basedir = ./logs
 datadir = ./data/raw_nerf/nerf_synthetic/ficus
 dataset_type = blender

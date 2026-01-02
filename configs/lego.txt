@@ -1,4 +1,4 @@
-expname = blender_paper_lego
+expname = lego_test
 basedir = ./logs
 datadir = ./data/raw_nerf/nerf_synthetic/lego
 dataset_type = blender

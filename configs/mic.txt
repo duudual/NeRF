@@ -1,4 +1,4 @@
-expname = blender_paper_mic
+expname = mic_test
 basedir = ./logs
 datadir = ./data/raw_nerf/nerf_synthetic/mic
 dataset_type = blender
