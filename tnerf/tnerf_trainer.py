@@ -1,35 +1,18 @@
-# Copyright (c) Meta Platforms, Inc. and affiliates.
-# All rights reserved.
-#
-# This source code is licensed under the license found in the
-# LICENSE file in the root directory of this source tree.
-
 """
-T-NeRF Trainer: Fine-tuning script for NColorHead and NLPHead.
-
-This script supports:
-- Loading pretrained VGGT weights
-- Fine-tuning NColorHead only
-- Fine-tuning NLPHead only  
-- Fine-tuning both heads together
+T-NeRF Trainer: Fine-tuning script for NLPHead only.
 
 Usage:
-    python tnerf_trainer.py --mode ncolor       # Train NColorHead only
-    python tnerf_trainer.py --mode nlp          # Train NLPHead only
-    python tnerf_trainer.py --mode both         # Train both heads
-    python tnerf_trainer.py --mode both --pretrained_path /path/to/model.pt
+    python tnerf_trainer.py --pretrained_path /path/to/model.pt --data_dir /path/to/data
 """
 
 import os
 import argparse
 import logging
-from typing import Dict, Any, Optional, List
-from pathlib import Path
+from typing import Dict
 
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 
@@ -39,15 +22,11 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from vggt.models.vggt import VGGT
 from tnerf_loss import TNeRFLoss
-from tnerf_dataloader import NColorDataset, NLPDataset, create_dataloaders
+from tnerf_dataloader import create_dataloaders
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="T-NeRF Trainer for NColorHead and NLPHead")
-    
-    # Training mode
-    parser.add_argument("--mode", type=str, default="both", choices=["ncolor", "nlp", "both"],
-                        help="Training mode: 'ncolor' for NColorHead, 'nlp' for NLPHead, 'both' for combined")
+    parser = argparse.ArgumentParser(description="T-NeRF Trainer for NLPHead")
     
     # Model paths
     parser.add_argument("--pretrained_path", type=str, default=None,
@@ -60,8 +39,6 @@ def parse_args():
     # Data paths
     parser.add_argument("--data_dir", type=str, required=True,
                         help="Directory containing training data")
-    parser.add_argument("--ncolor_data_dir", type=str, default=None,
-                        help="Directory containing NColor training data (if different from data_dir)")
     
     # Training hyperparameters
     parser.add_argument("--batch_size", type=int, default=2,
@@ -70,16 +47,12 @@ def parse_args():
                         help="Number of training epochs")
     parser.add_argument("--lr", type=float, default=1e-4,
                         help="Learning rate")
-    parser.add_argument("--lr_ncolor", type=float, default=None,
-                        help="Learning rate for NColorHead (default: same as --lr)")
     parser.add_argument("--lr_nlp", type=float, default=None,
                         help="Learning rate for NLPHead (default: same as --lr)")
     parser.add_argument("--weight_decay", type=float, default=1e-5,
                         help="Weight decay for optimizer")
     
-    # Loss weights
-    parser.add_argument("--ncolor_weight", type=float, default=1.0,
-                        help="Weight for NColor loss")
+    # Loss weight
     parser.add_argument("--nlp_weight", type=float, default=1.0,
                         help="Weight for NLP loss")
     
@@ -98,7 +71,7 @@ def parse_args():
                         help="Number of data loading workers")
     
     # Freeze settings
-    parser.add_argument("--freeze_backbone", action="store_true",
+    parser.add_argument("--freeze_backbone", action="store_true", default=True,
                         help="Freeze the backbone (aggregator) during training")
     parser.add_argument("--freeze_other_heads", action="store_true", default=True,
                         help="Freeze other heads (camera, point, depth, track) during training")
@@ -108,7 +81,7 @@ def parse_args():
 
 class TNeRFTrainer:
     """
-    Trainer class for fine-tuning NColorHead and NLPHead.
+    Trainer class for fine-tuning NLPHead.
     """
     
     def __init__(self, args):
@@ -134,8 +107,6 @@ class TNeRFTrainer:
         
         # Build loss
         self.loss_fn = TNeRFLoss(
-            mode=args.mode,
-            ncolor_weight=args.ncolor_weight,
             nlp_weight=args.nlp_weight,
         )
         
@@ -162,24 +133,19 @@ class TNeRFTrainer:
         self.logger = logging.getLogger(__name__)
         self.writer = SummaryWriter(log_dir=self.args.log_dir)
         
-        self.logger.info(f"Training mode: {self.args.mode}")
+        self.logger.info("Training mode: nlp")
         self.logger.info(f"Device: {self.device}")
     
     def _build_model(self) -> VGGT:
         """Build and initialize the VGGT model."""
         self.logger.info("Building VGGT model...")
         
-        # Determine which heads to enable based on training mode
-        enable_ncolor = self.args.mode in ["ncolor", "both"]
-        enable_nlp = self.args.mode in ["nlp", "both"]
-        
         model = VGGT(
             enable_camera=False,
             enable_point=True,  # Needed for 3D point predictions
             enable_depth=False,
             enable_track=False,
-            enable_ncolor=enable_ncolor,
-            enable_nlp=enable_nlp,
+            enable_nlp=True,
         )
         
         # Load pretrained weights if provided
@@ -236,17 +202,8 @@ class TNeRFTrainer:
         """Build optimizer with potentially different learning rates for different heads."""
         param_groups = []
         
-        # NColorHead parameters
-        if self.model.ncolor_head is not None and self.args.mode in ["ncolor", "both"]:
-            lr_ncolor = self.args.lr_ncolor if self.args.lr_ncolor else self.args.lr
-            param_groups.append({
-                "params": self.model.ncolor_head.parameters(),
-                "lr": lr_ncolor,
-                "name": "ncolor_head"
-            })
-        
         # NLPHead parameters
-        if self.model.nmlp_head is not None and self.args.mode in ["nlp", "both"]:
+        if self.model.nmlp_head is not None:
             lr_nlp = self.args.lr_nlp if self.args.lr_nlp else self.args.lr
             param_groups.append({
                 "params": self.model.nmlp_head.parameters(),
@@ -258,7 +215,7 @@ class TNeRFTrainer:
         if not self.args.freeze_backbone:
             param_groups.append({
                 "params": self.model.aggregator.parameters(),
-                "lr": self.args.lr * 0.1,  # Lower LR for backbone
+                "lr": self.args.lr * 0.005,  # Lower LR for backbone
                 "name": "aggregator"
             })
         
@@ -281,9 +238,7 @@ class TNeRFTrainer:
     def _build_dataloaders(self):
         """Build training and validation dataloaders."""
         return create_dataloaders(
-            mode=self.args.mode,
             data_dir=self.args.data_dir,
-            ncolor_data_dir=self.args.ncolor_data_dir,
             batch_size=self.args.batch_size,
             num_workers=self.args.num_workers,
         )

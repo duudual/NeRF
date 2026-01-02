@@ -1,9 +1,3 @@
-# Copyright (c) Meta Platforms, Inc. and affiliates.
-# All rights reserved.
-#
-# This source code is licensed under the license found in the
-# LICENSE file in the root directory of this source tree.
-
 """
 NLP Head for predicting NeRF MLP parameters.
 
@@ -219,7 +213,7 @@ class NLPHead(nn.Module):
         Forward pass through the NLP head.
         
         Args:
-            aggregated_tokens_list (List[Tensor]): List of token tensors from different transformer layers.
+            aggregated_tokens_list (List[Tensor]):   [B, S, P, 2C]
             images (Tensor): Input images with shape [B, S, 3, H, W], in range [0, 1].
             patch_start_idx (int): Starting index for patch tokens in the token sequence.
             frames_chunk_size (int, optional): Number of frames to process in each chunk. Default: 8.
@@ -339,11 +333,13 @@ class NLPHead(nn.Module):
         """
         layer_1, layer_2, layer_3, layer_4 = features
         
+        # 统一为 [B*S, output_channel, H', W'] 
         layer_1_rn = self.scratch.layer1_rn(layer_1)
         layer_2_rn = self.scratch.layer2_rn(layer_2)
         layer_3_rn = self.scratch.layer3_rn(layer_3)
         layer_4_rn = self.scratch.layer4_rn(layer_4)
         
+        # 融合的过程中调整H,W统一到
         out = self.scratch.refinenet4(layer_4_rn, size=layer_3_rn.shape[2:])
         del layer_4_rn, layer_4
         
@@ -354,6 +350,8 @@ class NLPHead(nn.Module):
         del layer_2_rn, layer_2
         
         out = self.scratch.refinenet1(out, layer_1_rn)
+        # 最终H,W变成layer_1_rn的H,W,为input[0]*features (256,256)
+        
         del layer_1_rn, layer_1
         
         return out
