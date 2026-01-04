@@ -13,5 +13,6 @@ if __name__=='__main__':
     # Use new API instead of deprecated set_default_tensor_type
     if torch.cuda.is_available():
         torch.set_default_device('cuda')
+        print("Using CUDA")
     torch.set_default_dtype(torch.float32)
     train()
