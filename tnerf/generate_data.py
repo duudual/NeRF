@@ -295,54 +295,6 @@ class VoxelRenderer:
         values = sampled.squeeze().T  # [N, 4]
         return values
     
-    def raw2outputs(
-        self,
-        raw: torch.Tensor,
-        z_vals: torch.Tensor,
-        rays_d: torch.Tensor,
-    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        """
-        Convert raw predictions to RGB using volume rendering.
-        
-        Args:
-            raw: [N_rays, N_samples, 4] - RGB + density
-            z_vals: [N_rays, N_samples] - sample positions along rays
-            rays_d: [N_rays, 3] - ray directions
-            
-        Returns:
-            rgb_map: [N_rays, 3]
-            weights: [N_rays, N_samples]
-            depth_map: [N_rays]
-        """
-        raw2alpha = lambda raw, dists: 1. - torch.exp(-F.relu(raw) * dists)
-        
-        dists = z_vals[..., 1:] - z_vals[..., :-1]
-        dists = torch.cat([dists, torch.full_like(dists[..., :1], 1e10)], dim=-1)
-        dists = dists * torch.norm(rays_d[..., None, :], dim=-1)
-        
-        rgb = torch.sigmoid(raw[..., :3])
-        
-        noise = 0.
-        if self.raw_noise_std > 0:
-            noise = torch.randn_like(raw[..., 3]) * self.raw_noise_std
-        
-        alpha = raw2alpha(raw[..., 3] + noise, dists)
-        
-        # Transmittance
-        weights = alpha * torch.cumprod(
-            torch.cat([torch.ones_like(alpha[..., :1]), 1. - alpha + 1e-10], dim=-1),
-            dim=-1
-        )[..., :-1]
-        
-        rgb_map = torch.sum(weights[..., None] * rgb, dim=-2)
-        depth_map = torch.sum(weights * z_vals, dim=-1)
-        acc_map = torch.sum(weights, dim=-1)
-        
-        if self.white_bkgd:
-            rgb_map = rgb_map + (1. - acc_map[..., None])
-        
-        return rgb_map, weights, depth_map
-    
     def render_image(
         self,
         rgbsigma: torch.Tensor,
