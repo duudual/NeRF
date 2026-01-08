@@ -1,2 +1,3 @@
 data/raw_nerf/*
 *.pyc
+tnerf/data/tnerf/*
