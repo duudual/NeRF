@@ -1,0 +1,40 @@
+# T-NeRF Training Configuration
+# For training NLPHead with NeRF-MAE pretrain data
+
+# Data paths
+data_dir: "d:/lecture/2.0_xk/CV/finalproject/NeRF-MAE_pretrain/NeRF-MAE/pretrain"
+
+# Model paths
+pretrained_path: null  # Path to pretrained VGGT weights
+checkpoint_dir: "./checkpoints_nerf_mae"
+
+# Training hyperparameters
+batch_size: 1
+num_epochs: 100
+lr: 0.0001
+weight_decay: 0.00001
+grad_clip: 1.0
+
+# Model settings
+image_size: 256
+num_input_views: 4
+num_target_views: 2
+num_samples: 64
+
+# Freeze settings
+freeze_backbone: true
+freeze_other_heads: true
+
+# Loss weights
+rgb_weight: 1.0
+reg_weight: 0.001
+
+# Logging
+log_dir: "./logs_nerf_mae"
+log_freq: 50
+save_freq: 5
+vis_freq: 200
+
+# Hardware
+device: "cuda"
+num_workers: 0
