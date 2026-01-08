@@ -26,70 +26,6 @@ from torch.utils.data import Dataset, DataLoader
 import torch.nn.functional as F
 
 
-def raw2outputs_grid(rgb, sigma, z_vals, rays_d, raw_noise_std=0., white_bkgd=True):
-    """
-    Adapted from render.py raw2outputs.
-    
-    Args:
-        rgb: [num_rays, num_samples, 3]. RGB values from voxel grid.
-        sigma: [num_rays, num_samples]. Density values from voxel grid.
-        z_vals: [num_rays, num_samples]. Integration distances.
-        rays_d: [num_rays, 3]. Direction of each ray.
-        raw_noise_std: float. Standard deviation of noise added to density.
-        white_bkgd: bool. If True, assume white background.
-    
-    Returns:
-        rgb_map: [num_rays, 3]. Estimated RGB color of a ray.
-        disp_map: [num_rays]. Disparity map (inverse of depth).
-        acc_map: [num_rays]. Sum of weights along each ray.
-        weights: [num_rays, num_samples]. Weights assigned to each sampled color.
-        depth_map: [num_rays]. Estimated distance to object.
-    """
-    # Compute distances between adjacent samples
-    dists = z_vals[..., 1:] - z_vals[..., :-1]
-    # Add infinite distance for last sample (same as render.py)
-    dists = torch.cat([dists, torch.tensor([1e10], device=dists.device).expand(dists[..., :1].shape)], -1)
-    
-    # Scale by ray direction magnitude (accounts for non-unit direction vectors)
-    dists = dists * torch.norm(rays_d[..., None, :], dim=-1)
-    
-    # Add noise to density for regularization during training
-    noise = 0.
-    if raw_noise_std > 0.:
-        noise = torch.randn(sigma.shape, device=sigma.device) * raw_noise_std
-    
-    # Convert density to alpha using the formula: alpha = 1 - exp(-sigma * dist)
-    # Using ReLU to ensure non-negative density (same as render.py)
-    alpha = 1. - torch.exp(-F.relu(sigma + noise) * dists)
-    
-    # Compute transmittance and weights
-    # T_i = prod_{j=1}^{i-1} (1 - alpha_j)
-    # weights_i = T_i * alpha_i
-    transmittance = torch.cumprod(
-        torch.cat([torch.ones((alpha.shape[0], 1), device=alpha.device), 1. - alpha + 1e-10], -1),
-        dim=-1
-    )[:, :-1]
-    weights = alpha * transmittance
-    
-    # Compute final RGB color as weighted sum
-    rgb_map = torch.sum(weights[..., None] * rgb, dim=-2)
-    
-    # Compute depth as weighted sum of distances
-    depth_map = torch.sum(weights * z_vals, dim=-1)
-    
-    # Compute disparity (inverse depth)
-    disp_map = 1. / torch.max(1e-10 * torch.ones_like(depth_map), depth_map / (torch.sum(weights, -1) + 1e-10))
-    
-    # Accumulated opacity
-    acc_map = torch.sum(weights, dim=-1)
-    
-    # White background composition
-    if white_bkgd:
-        rgb_map = rgb_map + (1. - acc_map[..., None])
-    
-    return rgb_map, disp_map, acc_map, weights, depth_map
-
-
 def sample_pdf_grid(bins, weights, N_samples, det=False):
     """
     Hierarchical sampling based on weights (adapted from render.py/sampling.py).
@@ -147,7 +83,6 @@ class NeRFMAEDataset(Dataset):
     
     Each sample contains:
     - images: Rendered multi-view images [S, 3, H, W]
-    - depth_maps: Rendered depth maps [S, H, W]
     - rgbsigma: Original voxel grid [D, H, W, 4]
     - camera_poses: Camera extrinsics for each view [S, 4, 4]
     - camera_intrinsics: Camera intrinsics [3, 3]
@@ -253,15 +188,12 @@ class NeRFMAEDataset(Dataset):
         
         # Render images from each camera pose using render.py-style volume rendering
         images = []
-        depth_maps = []
         for i in range(self.num_views):
             pose = camera_poses[i]
-            img, depth = self._render_from_voxel(rgbsigma, pose, bbox_min, bbox_max)
+            img = self._render_from_voxel(rgbsigma, pose, bbox_min, bbox_max)
             images.append(img)
-            depth_maps.append(depth)
         
         images = torch.stack(images, dim=0)  # [S, 3, H, W]
-        depth_maps = torch.stack(depth_maps, dim=0)  # [S, H, W]
         
         # Create camera intrinsics (simple pinhole model)
         focal = self.image_size[0]  # Approximate focal length
@@ -273,7 +205,6 @@ class NeRFMAEDataset(Dataset):
         
         return {
             "images": images,                    # [S, 3, H, W]
-            "depth_maps": depth_maps,            # [S, H, W]
             "rgbsigma": rgbsigma,               # [H, W, D, 4]
             "camera_poses": camera_poses,        # [S, 4, 4]
             "camera_intrinsics": intrinsics,     # [3, 3]
@@ -364,9 +295,12 @@ class NeRFMAEDataset(Dataset):
         camera_pose: torch.Tensor,
         bbox_min: torch.Tensor,
         bbox_max: torch.Tensor,
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+    ) -> torch.Tensor:
         """
         Render an image from the voxel grid using volume rendering.
+        
+        Adapted from render.py's render_rays, replacing MLP network queries
+        with trilinear voxel grid sampling.
         
         Args:
             rgbsigma: Voxel grid [X, Y, Z, 4]
@@ -376,266 +310,9 @@ class NeRFMAEDataset(Dataset):
             
         Returns:
             image: Rendered image [3, H, W]
-            depth: Rendered depth map [H, W]
         """
-        H, W = self.image_size
-        device = rgbsigma.device
-        
-        # Generate rays (similar to render.py's get_rays)
-        rays_o, rays_d = self._generate_rays(camera_pose, H, W)
-        
-        # Reshape for batch processing
-        rays_o_flat = rays_o.reshape(-1, 3)  # [H*W, 3]
-        rays_d_flat = rays_d.reshape(-1, 3)  # [H*W, 3]
-        N_rays = rays_o_flat.shape[0]
-        
-        # Render in chunks to avoid OOM (like batchify_rays in render.py)
-        rgb_chunks = []
-        depth_chunks = []
-        
-        for i in range(0, N_rays, self.chunk):
-            chunk_rays_o = rays_o_flat[i:i + self.chunk]
-            chunk_rays_d = rays_d_flat[i:i + self.chunk]
-            
-            rgb_chunk, depth_chunk = self._render_rays_chunk(
-                chunk_rays_o, chunk_rays_d, rgbsigma, bbox_min, bbox_max
-            )
-            rgb_chunks.append(rgb_chunk)
-            depth_chunks.append(depth_chunk)
-        
-        # Concatenate chunks
-        colors = torch.cat(rgb_chunks, dim=0)  # [H*W, 3]
-        depths = torch.cat(depth_chunks, dim=0)  # [H*W]
-        
-        # Reshape to image
-        image = colors.reshape(H, W, 3).permute(2, 0, 1)  # [3, H, W]
-        depth = depths.reshape(H, W)  # [H, W]
-        
-        return image, depth
+        #TODO:
     
-    def _render_rays_chunk(
-        self,
-        rays_o: torch.Tensor,
-        rays_d: torch.Tensor,
-        rgbsigma: torch.Tensor,
-        bbox_min: torch.Tensor,
-        bbox_max: torch.Tensor,
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
-        """
-        Render a chunk of rays using the voxel grid.
-        
-        Implements the core rendering logic from render.py's render_rays,
-        but queries a voxel grid instead of an MLP network.
-        
-        Args:
-            rays_o: Ray origins [N, 3]
-            rays_d: Ray directions [N, 3]
-            rgbsigma: Voxel grid [X, Y, Z, 4]
-            bbox_min, bbox_max: Bounding box corners [3]
-            
-        Returns:
-            rgb_map: Rendered colors [N, 3]
-            depth_map: Rendered depths [N]
-        """
-        device = rays_o.device
-        N_rays = rays_o.shape[0]
-        
-        # Compute near and far intersection with bbox
-        near, far = self._intersect_bbox(rays_o, rays_d, bbox_min, bbox_max)
-        
-        # === Coarse sampling (like render.py) ===
-        t_vals = torch.linspace(0., 1., steps=self.num_samples, device=device)
-        z_vals = near[:, None] * (1. - t_vals) + far[:, None] * t_vals  # [N, num_samples]
-        
-        # Stratified sampling with perturbation (from render.py)
-        if self.perturb > 0.:
-            mids = .5 * (z_vals[..., 1:] + z_vals[..., :-1])
-            upper = torch.cat([mids, z_vals[..., -1:]], -1)
-            lower = torch.cat([z_vals[..., :1], mids], -1)
-            t_rand = torch.rand(z_vals.shape, device=device)
-            z_vals = lower + (upper - lower) * t_rand
-        
-        # Sample points along rays: pts = o + t * d
-        pts = rays_o[:, None, :] + rays_d[:, None, :] * z_vals[:, :, None]  # [N, num_samples, 3]
-        
-        # Query voxel grid (replaces network_query_fn in render.py)
-        rgb, sigma = self._query_voxel_grid(pts, rgbsigma, bbox_min, bbox_max)
-        sigma = sigma.squeeze(-1)  # [N, num_samples]
-        
-        # Volume rendering (using raw2outputs_grid, adapted from render.py)
-        rgb_map, disp_map, acc_map, weights, depth_map = raw2outputs_grid(
-            rgb, sigma, z_vals, rays_d,
-            raw_noise_std=self.raw_noise_std,
-            white_bkgd=self.white_bkgd
-        )
-        
-        # === Hierarchical sampling (from render.py) ===
-        if self.num_importance > 0:
-            # Save coarse results
-            rgb_map_0 = rgb_map
-            depth_map_0 = depth_map
-            
-            # Sample from PDF based on coarse weights
-            z_vals_mid = .5 * (z_vals[..., 1:] + z_vals[..., :-1])
-            z_samples = sample_pdf_grid(
-                z_vals_mid, 
-                weights[..., 1:-1],  # Exclude first and last weights
-                self.num_importance, 
-                det=(self.perturb == 0.)
-            )
-            z_samples = z_samples.detach()
-            
-            # Combine coarse and fine samples, then sort
-            z_vals, _ = torch.sort(torch.cat([z_vals, z_samples], -1), -1)
-            
-            # Sample points at new locations
-            pts = rays_o[:, None, :] + rays_d[:, None, :] * z_vals[:, :, None]
-            
-            # Query voxel grid at fine sample points
-            rgb, sigma = self._query_voxel_grid(pts, rgbsigma, bbox_min, bbox_max)
-            sigma = sigma.squeeze(-1)
-            
-            # Final volume rendering with combined samples
-            rgb_map, disp_map, acc_map, weights, depth_map = raw2outputs_grid(
-                rgb, sigma, z_vals, rays_d,
-                raw_noise_std=self.raw_noise_std,
-                white_bkgd=self.white_bkgd
-            )
-        
-        return rgb_map, depth_map
-    
-    def _generate_rays(
-        self, 
-        camera_pose: torch.Tensor, 
-        H: int, 
-        W: int
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
-        """
-        Generate rays for each pixel.
-        
-        Args:
-            camera_pose: Camera-to-world matrix [4, 4]
-            H, W: Image dimensions
-            
-        Returns:
-            rays_o: Ray origins [H, W, 3]
-            rays_d: Ray directions [H, W, 3]
-        """
-        focal = H  # Simple approximation
-        
-        # Pixel coordinates
-        i, j = torch.meshgrid(
-            torch.arange(H, dtype=torch.float32),
-            torch.arange(W, dtype=torch.float32),
-            indexing='ij'
-        )
-        
-        # Camera space directions
-        dirs = torch.stack([
-            (j - W * 0.5) / focal,
-            -(i - H * 0.5) / focal,
-            -torch.ones_like(i)
-        ], dim=-1)  # [H, W, 3]
-        
-        # Transform to world space
-        rotation = camera_pose[:3, :3]
-        rays_d = torch.sum(dirs[..., None, :] * rotation, dim=-1)  # [H, W, 3]
-        rays_d = rays_d / torch.norm(rays_d, dim=-1, keepdim=True)
-        
-        # Ray origins (camera position)
-        rays_o = camera_pose[:3, 3].expand(H, W, 3)
-        
-        return rays_o, rays_d
-    
-    def _intersect_bbox(
-        self,
-        rays_o: torch.Tensor,
-        rays_d: torch.Tensor,
-        bbox_min: torch.Tensor,
-        bbox_max: torch.Tensor,
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
-        """
-        Compute ray-bbox intersection.
-        
-        Args:
-            rays_o: Ray origins [N, 3]
-            rays_d: Ray directions [N, 3]
-            bbox_min, bbox_max: Bounding box corners [3]
-            
-        Returns:
-            near, far: Intersection distances [N]
-        """
-        inv_d = 1.0 / (rays_d + 1e-10)
-        
-        t_min = (bbox_min - rays_o) * inv_d
-        t_max = (bbox_max - rays_o) * inv_d
-        
-        t1 = torch.minimum(t_min, t_max)
-        t2 = torch.maximum(t_min, t_max)
-        
-        near = torch.max(t1, dim=-1)[0]
-        far = torch.min(t2, dim=-1)[0]
-        
-        # Clamp to valid range
-        near = torch.clamp(near, min=0.1)
-        far = torch.clamp(far, min=near + 0.1)
-        
-        return near, far
-    
-    def _query_voxel_grid(
-        self,
-        pts: torch.Tensor,
-        rgbsigma: torch.Tensor,
-        bbox_min: torch.Tensor,
-        bbox_max: torch.Tensor,
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
-        """
-        Query RGB and sigma values from voxel grid using trilinear interpolation.
-        
-        Args:
-            pts: Query points [N, M, 3] in world coordinates (x, y, z)
-            rgbsigma: Voxel grid [X, Y, Z, 4] where X, Y, Z are grid dimensions
-            bbox_min, bbox_max: Bounding box [3]
-            
-        Returns:
-            rgb: Color values [N, M, 3]
-            sigma: Density values [N, M, 1]
-        """
-        N, M, _ = pts.shape
-        
-        # Normalize points to [-1, 1] for grid_sample
-        # pts are in world coordinates (x, y, z)
-        pts_normalized = 2.0 * (pts - bbox_min) / (bbox_max - bbox_min + 1e-10) - 1.0
-        
-        # grid_sample expects input in [batch, C, D, H, W] format
-        # and grid coordinates in (x, y, z) order mapping to (W, H, D)
-        # Our rgbsigma is [X, Y, Z, 4] in world coordinate order
-        # We need to rearrange to [1, 4, Z, Y, X] for grid_sample (D=Z, H=Y, W=X)
-        voxel = rgbsigma.permute(3, 2, 1, 0).unsqueeze(0)  # [1, 4, Z, Y, X]
-        
-        # Grid sample expects grid in (x, y, z) order where x->W, y->H, z->D
-        # pts_normalized is already in (x, y, z) order
-        pts_grid = pts_normalized.reshape(1, N * M, 1, 1, 3)  # [1, N*M, 1, 1, 3]
-        
-        # Sample from grid using trilinear interpolation
-        sampled = F.grid_sample(
-            voxel, pts_grid, 
-            mode='bilinear', 
-            padding_mode='zeros',
-            align_corners=True
-        )  # [1, 4, N*M, 1, 1]
-        
-        # Reshape result
-        sampled = sampled.view(4, N * M).T.reshape(N, M, 4)  # [N, M, 4]
-        
-        rgb = sampled[..., :3]
-        sigma = sampled[..., 3:4]
-        
-        # Ensure non-negative sigma
-        sigma = torch.clamp(sigma, min=0.0)
-        
-        return rgb, sigma
-
 
 def create_nerf_mae_dataloaders(
     data_dir: str,
@@ -698,7 +375,7 @@ def collate_fn(batch: List[Dict]) -> Dict[str, torch.Tensor]:
     result = {}
     
     # Stack tensor fields
-    for key in ['images', 'depth_maps', 'camera_poses', 'camera_intrinsics', 'bbox_min', 'bbox_max']:
+    for key in ['images', 'camera_poses', 'camera_intrinsics', 'bbox_min', 'bbox_max']:
         if key in batch[0]:
             result[key] = torch.stack([item[key] for item in batch], dim=0)
     
@@ -737,36 +414,30 @@ if __name__ == "__main__":
     print(f"Dataset size: {len(dataset)}")
     
     # Get a sample
-    sample = dataset[1]
+    sample = dataset[0]
     print(f"Sample keys: {sample.keys()}")
     print(f"Images shape: {sample['images'].shape}")
-    print(f"Depth maps shape: {sample['depth_maps'].shape}")
     print(f"rgbsigma shape: {sample['rgbsigma'].shape}")
     print(f"Camera poses shape: {sample['camera_poses'].shape}")
     
     # Print rendering statistics
     print(f"\nRendering statistics:")
     print(f"  RGB min: {sample['images'].min():.4f}, max: {sample['images'].max():.4f}")
-    print(f"  Depth min: {sample['depth_maps'].min():.4f}, max: {sample['depth_maps'].max():.4f}")
+    print(f"  RGB mean: {sample['images'].mean():.4f}")
     
-    # Save rendered images and depth maps for visualization
+    # Save rendered images for visualization
     import matplotlib.pyplot as plt
     
-    fig, axes = plt.subplots(2, min(4, args.num_views), figsize=(16, 8))
+    fig, axes = plt.subplots(1, min(4, args.num_views), figsize=(16, 4))
+    if min(4, args.num_views) == 1:
+        axes = [axes]
+    
     for i in range(min(4, args.num_views)):
-        # RGB image
         img = sample['images'][i].permute(1, 2, 0).numpy()
         img = np.clip(img, 0, 1)
-        axes[0, i].imshow(img)
-        axes[0, i].set_title(f"RGB View {i}")
-        axes[0, i].axis('off')
-        
-        # Depth map
-        depth = sample['depth_maps'][i].numpy()
-        im = axes[1, i].imshow(depth, cmap='viridis')
-        axes[1, i].set_title(f"Depth View {i}")
-        axes[1, i].axis('off')
-        plt.colorbar(im, ax=axes[1, i], fraction=0.046, pad=0.04)
+        axes[i].imshow(img)
+        axes[i].set_title(f"View {i}")
+        axes[i].axis('off')
     
     plt.tight_layout()
     plt.savefig("test_rendered_views.png")
