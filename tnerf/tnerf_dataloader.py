@@ -12,17 +12,22 @@ TNerfDataset:
 - Each sample contains: multi-view images + camera parameters + voxel grid (optional)
 - Designed for training VGGT to predict NeRF MLP parameters
 
-Data Structure Expected:
+Data Structure Expected (from generate_data.py):
     data_dir/
-        train_scenes.json
-        val_scenes.json
-        scene_xxx/
-            images/
-                view_000.png
-                view_001.png
+        train_samples.json
+        val_samples.json
+        test_samples.json
+        config.json
+        samples/
+            3dfront_2140_00/
+                images/
+                    view_000.png
+                    view_001.png
+                    ...
+                cameras.npz
+                rgbsigma.npz (optional)
+            3dfront_2140_01/
                 ...
-            cameras.npz
-            rgbsigma.npz (optional)
 """
 
 import os
@@ -41,14 +46,12 @@ class TNerfDataset(Dataset):
     """
     Dataset for T-NeRF (Transformer-based NeRF) training.
     
-    Loads pre-rendered multi-view images from generate_data.py output.
-    
     Each sample contains:
     - images: Multi-view images [S, 3, H, W]
     - camera_extrinsics: Camera poses [S, 4, 4]
     - camera_intrinsics: Camera intrinsic matrix [3, 3]
     - bbox_min, bbox_max: Scene bounding box [3]
-    - rgbsigma: Voxel grid [X, Y, Z, 4] (optional, for loss computation)
+    - rgbsigma: Voxel grid [X, Y, Z, 4] (when training, for loss computation)
     """
     
     def __init__(
@@ -64,14 +67,15 @@ class TNerfDataset(Dataset):
         Initialize T-NeRF dataset.
         
         Args:
-            data_dir: Directory containing rendered multi-view data
-            split: "train" or "val"
+            data_dir: Directory containing rendered data from generate_data.py
+            split: "train", "val", or "test"
             image_size: Target image size (H, W) for resizing
             num_views: Number of views to load per sample
             transform: Optional image transforms
             load_voxel: Whether to load voxel grid (for loss computation)
         """
         self.data_dir = Path(data_dir)
+        self.samples_dir = self.data_dir / "samples"
         self.split = split
         self.image_size = image_size
         self.num_views = num_views
@@ -90,45 +94,80 @@ class TNerfDataset(Dataset):
     
     def _load_index(self) -> List[Dict]:
         """Load dataset index from JSON file."""
-        index_path = self.data_dir / f"{self.split}_scenes.json"
+        # Try new format first (from generate_data.py with split support)
+        index_path = self.data_dir / f"{self.split}_samples.json"
         
         if index_path.exists():
             with open(index_path, "r") as f:
-                scenes = json.load(f)
-            # Convert relative paths to absolute
-            for scene in scenes:
-                if "scene_id" in scene:
-                    scene["path"] = str(self.data_dir / scene["scene_id"])
-            return scenes
-        else:
-            # Fallback: scan for scene directories
-            print(f"Warning: Index file {index_path} not found, scanning directories...")
-            samples = []
-            scene_dirs = sorted(self.data_dir.glob("scene_*"))
-            
-            # Simple split: first 80% train, rest val
-            num_train = int(len(scene_dirs) * 0.8)
-            if self.split == "train":
-                scene_dirs = scene_dirs[:num_train]
+                data = json.load(f)
+            # Handle both formats: list or dict with "samples" key
+            if isinstance(data, dict) and "samples" in data:
+                samples = data["samples"]
             else:
-                scene_dirs = scene_dirs[num_train:]
-            
-            for scene_dir in scene_dirs:
-                if scene_dir.is_dir() and (scene_dir / "images").exists():
-                    samples.append({
-                        "scene_id": scene_dir.name,
-                        "path": str(scene_dir)
-                    })
+                samples = data
             return samples
+        
+        # Fallback: try old format (train_scenes.json)
+        old_index_path = self.data_dir / f"{self.split}_scenes.json"
+        if old_index_path.exists():
+            with open(old_index_path, "r") as f:
+                return json.load(f)
+        
+        # Fallback: scan for sample directories
+        print(f"Warning: Index file not found, scanning directories...")
+        samples = []
+        
+        if self.samples_dir.exists():
+            sample_dirs = sorted(self.samples_dir.glob("*"))
+        else:
+            # Try old structure
+            sample_dirs = sorted(self.data_dir.glob("scene_*"))
+        
+        for sample_dir in sample_dirs:
+            if sample_dir.is_dir() and (sample_dir / "images").exists():
+                samples.append({
+                    "sample_id": sample_dir.name,
+                })
+        
+        # Simple split if no split file
+        if self.split == "train":
+            return samples[:int(len(samples) * 0.8)]
+        elif self.split == "val":
+            return samples[int(len(samples) * 0.8):int(len(samples) * 0.9)]
+        else:  # test
+            return samples[int(len(samples) * 0.9):]
     
     def __len__(self) -> int:
         return len(self.samples)
     
+    def _get_sample_path(self, sample_info: Dict) -> Path:
+        """Get the path to a sample directory."""
+        sample_id = sample_info.get("sample_id", sample_info.get("scene_id", ""))
+        
+        # Try new structure first
+        sample_path = self.samples_dir / sample_id
+        if sample_path.exists():
+            return sample_path
+        
+        # Try old structure
+        sample_path = self.data_dir / sample_id
+        if sample_path.exists():
+            return sample_path
+        
+        # Try with scene_ prefix (old format)
+        sample_path = self.data_dir / f"scene_{sample_id}"
+        if sample_path.exists():
+            return sample_path
+        
+        raise FileNotFoundError(f"Sample directory not found for: {sample_id}")
+    
     def __getitem__(self, idx: int) -> Dict[str, torch.Tensor]:
         """Load a single sample."""
         sample_info = self.samples[idx]
-        scene_path = Path(sample_info.get("path", self.data_dir / sample_info["scene_id"]))
-        images_dir = scene_path / "images"
+        sample_path = self._get_sample_path(sample_info)
+        sample_id = sample_info.get("sample_id", sample_info.get("scene_id", sample_path.name))
+        
+        images_dir = sample_path / "images"
         
         # Load images
         images = []
@@ -154,11 +193,11 @@ class TNerfDataset(Dataset):
         
         result = {
             "images": images,
-            "scene_id": sample_info.get("scene_id", scene_path.name),
+            "sample_id": sample_id,
         }
         
         # Load camera parameters
-        camera_path = scene_path / "cameras.npz"
+        camera_path = sample_path / "cameras.npz"
         if camera_path.exists():
             camera_data = np.load(camera_path)
             
@@ -178,7 +217,7 @@ class TNerfDataset(Dataset):
         
         # Load voxel grid for loss computation
         if self.load_voxel:
-            voxel_path = scene_path / "rgbsigma.npz"
+            voxel_path = sample_path / "rgbsigma.npz"
             if voxel_path.exists():
                 voxel_data = np.load(voxel_path)
                 rgbsigma = torch.from_numpy(voxel_data["rgbsigma"]).float()
@@ -212,9 +251,9 @@ def tnerf_collate_fn(batch: List[Dict]) -> Dict[str, torch.Tensor]:
     if 'rgbsigma' in batch[0]:
         result['rgbsigma'] = [item['rgbsigma'] for item in batch]
     
-    # Keep scene_id as list
-    if 'scene_id' in batch[0]:
-        result['scene_id'] = [item['scene_id'] for item in batch]
+    # Keep sample_id as list
+    if 'sample_id' in batch[0]:
+        result['sample_id'] = [item['sample_id'] for item in batch]
     
     return result
 
@@ -226,9 +265,9 @@ def create_tnerf_dataloaders(
     image_size: Tuple[int, int] = (518, 518),
     num_views: int = 8,
     load_voxel: bool = True,
-) -> Tuple[DataLoader, DataLoader]:
+) -> Tuple[DataLoader, DataLoader, Optional[DataLoader]]:
     """
-    Create training and validation dataloaders for T-NeRF.
+    Create training, validation, and test dataloaders for T-NeRF.
     
     Args:
         data_dir: Directory containing rendered data from generate_data.py
@@ -239,7 +278,8 @@ def create_tnerf_dataloaders(
         load_voxel: Whether to load voxel grids for loss computation
     
     Returns:
-        Tuple of (train_loader, val_loader)
+        Tuple of (train_loader, val_loader, test_loader)
+        test_loader may be None if no test data exists
     """
     train_dataset = TNerfDataset(
         data_dir=data_dir,
@@ -276,12 +316,34 @@ def create_tnerf_dataloaders(
         collate_fn=tnerf_collate_fn,
     )
     
-    return train_loader, val_loader
+    # Try to create test loader
+    test_loader = None
+    try:
+        test_dataset = TNerfDataset(
+            data_dir=data_dir,
+            split="test",
+            image_size=image_size,
+            num_views=num_views,
+            load_voxel=load_voxel,
+        )
+        if len(test_dataset) > 0:
+            test_loader = DataLoader(
+                test_dataset,
+                batch_size=batch_size,
+                shuffle=False,
+                num_workers=num_workers,
+                pin_memory=True,
+                collate_fn=tnerf_collate_fn,
+            )
+    except Exception as e:
+        print(f"Note: No test data available ({e})")
+    
+    return train_loader, val_loader, test_loader
 
 
-# Legacy alias for backward compatibility
+# Legacy aliases for backward compatibility
 NLPDataset = TNerfDataset
-create_dataloaders = create_tnerf_dataloaders
+create_dataloaders = lambda *args, **kwargs: create_tnerf_dataloaders(*args, **kwargs)[:2]
 
 
 if __name__ == "__main__":
@@ -290,7 +352,7 @@ if __name__ == "__main__":
     
     parser = argparse.ArgumentParser()
     parser.add_argument("--data_dir", type=str, required=True,
-                        help="Path to rendered data directory")
+                        help="Path to rendered data directory from generate_data.py")
     parser.add_argument("--batch_size", type=int, default=2)
     parser.add_argument("--num_views", type=int, default=8)
     parser.add_argument("--image_size", type=int, default=256)
@@ -298,7 +360,7 @@ if __name__ == "__main__":
     
     print("Testing T-NeRF dataloader...")
     
-    train_loader, val_loader = create_tnerf_dataloaders(
+    train_loader, val_loader, test_loader = create_tnerf_dataloaders(
         data_dir=args.data_dir,
         batch_size=args.batch_size,
         num_views=args.num_views,
@@ -308,6 +370,8 @@ if __name__ == "__main__":
     
     print(f"Train batches: {len(train_loader)}")
     print(f"Val batches: {len(val_loader)}")
+    if test_loader:
+        print(f"Test batches: {len(test_loader)}")
     
     # Get a sample batch
     batch = next(iter(train_loader))
@@ -315,7 +379,10 @@ if __name__ == "__main__":
     print(f"Images shape: {batch['images'].shape}")
     
     if 'camera_extrinsics' in batch:
-        print(f"Camera extrinsics shape: {batch['camera_extrinsics'].shape}")
+        if isinstance(batch['camera_extrinsics'], torch.Tensor):
+            print(f"Camera extrinsics shape: {batch['camera_extrinsics'].shape}")
+        else:
+            print(f"Camera extrinsics: {len(batch['camera_extrinsics'])} items")
     
     if 'rgbsigma' in batch:
         print(f"Voxel grids: {len(batch['rgbsigma'])} items")

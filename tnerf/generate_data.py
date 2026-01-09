@@ -6,23 +6,33 @@ and saves them to disk for training. This pre-processing step allows the dataloa
 to simply load images instead of rendering them on-the-fly.
 
 Data Flow:
-1. Load rgbsigma voxel grid from .npz files
-2. Generate camera poses around the scene  
-3. Render multi-view images using volume rendering from the voxel grid
-4. Save images and metadata to output directory
+1. Load nerfmae_split.npz to get train/val/test splits
+2. For each sample in the split, load corresponding rgbsigma voxel grid
+3. Generate camera poses around the scene  
+4. Render multi-view images using volume rendering from the voxel grid
+5. Save images and metadata to output directory
 
 Output Structure:
     output_dir/
-        scene_xxx/
-            images/
-                view_000.png
-                view_001.png
+        train_samples.json   # list of train sample info
+        val_samples.json     # list of val sample info
+        test_samples.json    # list of test sample info
+        config.json
+        samples/
+            3dfront_2140_00/
+                images/
+                    view_000.png
+                    view_001.png
+                    ...
+                cameras.npz  (camera poses, intrinsics, bbox)
+                rgbsigma.npz (optional: original voxel grid for loss computation)
+            3dfront_2140_01/
                 ...
-            cameras.npz  (camera poses, intrinsics, bbox)
-            rgbsigma.npz (optional: original voxel grid for loss computation)
 
 Usage:
-    python generate_data.py --input_dir ./data/nerf-mae --output_dir ./data/tnerf
+    python generate_data.py --input_dir /path/to/pretrain --output_dir /path/to/rendered_data
+    python generate_data.py --input_dir data/nerf-mae --output_dir data/tnerf
+
 """
 
 import os
@@ -262,38 +272,129 @@ class VoxelRenderer:
         
         Args:
             rgbsigma: [X, Y, Z, 4] voxel grid (RGB + sigma)
-            points: [N, 3] query points in world coordinates
+            points: [N, 3] query points in world coordinates (x, y, z)
             bbox_min: [3] minimum corner of bounding box
             bbox_max: [3] maximum corner of bounding box
             
         Returns:
             values: [N, 4] interpolated RGB + sigma values
         """
-        # Ensure all inputs are on the same device
-        device = rgbsigma.device
-        points = points.to(device)
-        bbox_min = bbox_min.to(device)
-        bbox_max = bbox_max.to(device)
+        N = points.shape[0]
         
         # Normalize points to [-1, 1] for grid_sample
-        normalized = 2 * (points - bbox_min) / (bbox_max - bbox_min + 1e-8) - 1
+        # pts are in world coordinates (x, y, z)
+        pts_normalized = 2.0 * (points - bbox_min) / (bbox_max - bbox_min + 1e-10) - 1.0
         
-        # grid_sample expects [N, D, H, W, 3] grid and [N, D_out, H_out, W_out, 3] points
-        # We reshape for single batch
-        grid = rgbsigma.permute(3, 0, 1, 2).unsqueeze(0)  # [1, 4, X, Y, Z]
-        sample_points = normalized.view(1, 1, 1, -1, 3)  # [1, 1, 1, N, 3]
+        # grid_sample expects input in [batch, C, D, H, W] format
+        # and grid coordinates in (x, y, z) order mapping to (W, H, D)
+        # Our rgbsigma is [X, Y, Z, 4] in world coordinate order
+        # We need to rearrange to [1, 4, Z, Y, X] for grid_sample (D=Z, H=Y, W=X)
+        voxel = rgbsigma.permute(3, 2, 1, 0).unsqueeze(0)  # [1, 4, Z, Y, X]
         
-        # Sample using trilinear interpolation
+        # Grid sample expects grid in (x, y, z) order where x->W, y->H, z->D
+        # pts_normalized is already in (x, y, z) order
+        pts_grid = pts_normalized.reshape(1, N, 1, 1, 3)  # [1, N, 1, 1, 3]
+        
+        # Sample from grid using trilinear interpolation
         sampled = F.grid_sample(
-            grid,
-            sample_points,
-            mode='bilinear',
+            voxel, pts_grid, 
+            mode='bilinear', 
             padding_mode='zeros',
             align_corners=True
-        )  # [1, 4, 1, 1, N]
+        )  # [1, 4, N, 1, 1]
         
-        values = sampled.squeeze().T  # [N, 4]
+        # Reshape result
+        values = sampled.view(4, N).T  # [N, 4]
+        
+        # Ensure non-negative sigma
+        values = values.clone()
+        values[:, 3] = torch.clamp(values[:, 3], min=0.0)
+        
         return values
+    
+    def raw2outputs(
+        self,
+        raw: torch.Tensor,
+        z_vals: torch.Tensor,
+        rays_d: torch.Tensor,
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        """
+        Convert raw predictions to RGB using volume rendering.
+        
+        Args:
+            raw: [N_rays, N_samples, 4] - RGB + density
+            z_vals: [N_rays, N_samples] - sample positions along rays
+            rays_d: [N_rays, 3] - ray directions
+            
+        Returns:
+            rgb_map: [N_rays, 3]
+            weights: [N_rays, N_samples]
+            depth_map: [N_rays]
+        """
+        raw2alpha = lambda raw, dists: 1. - torch.exp(-F.relu(raw) * dists)
+        
+        dists = z_vals[..., 1:] - z_vals[..., :-1]
+        dists = torch.cat([dists, torch.full_like(dists[..., :1], 1e10)], dim=-1)
+        dists = dists * torch.norm(rays_d[..., None, :], dim=-1)
+        
+        # RGB values are already in [0,1] range from voxel grid, no need for sigmoid
+        rgb = torch.clamp(raw[..., :3], 0.0, 1.0)
+        
+        noise = 0.
+        if self.raw_noise_std > 0:
+            noise = torch.randn_like(raw[..., 3]) * self.raw_noise_std
+        
+        alpha = raw2alpha(raw[..., 3] + noise, dists)
+        
+        # Transmittance
+        weights = alpha * torch.cumprod(
+            torch.cat([torch.ones_like(alpha[..., :1]), 1. - alpha + 1e-10], dim=-1),
+            dim=-1
+        )[..., :-1]
+        
+        rgb_map = torch.sum(weights[..., None] * rgb, dim=-2)
+        depth_map = torch.sum(weights * z_vals, dim=-1)
+        acc_map = torch.sum(weights, dim=-1)
+        
+        if self.white_bkgd:
+            rgb_map = rgb_map + (1. - acc_map[..., None])
+        
+        return rgb_map, weights, depth_map
+    
+    def intersect_bbox(
+        self,
+        rays_o: torch.Tensor,
+        rays_d: torch.Tensor,
+        bbox_min: torch.Tensor,
+        bbox_max: torch.Tensor,
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        """
+        Compute ray-bbox intersection for accurate near/far bounds.
+        
+        Args:
+            rays_o: Ray origins [N, 3]
+            rays_d: Ray directions [N, 3]
+            bbox_min, bbox_max: Bounding box corners [3]
+            
+        Returns:
+            near, far: Intersection distances [N]
+        """
+        inv_d = 1.0 / (rays_d + 1e-10)
+        
+        t_min = (bbox_min - rays_o) * inv_d
+        t_max = (bbox_max - rays_o) * inv_d
+        
+        t1 = torch.minimum(t_min, t_max)
+        t2 = torch.maximum(t_min, t_max)
+        
+        near = torch.max(t1, dim=-1)[0]
+        far = torch.min(t2, dim=-1)[0]
+        
+        # Clamp to valid range
+        near = torch.clamp(near, min=0.1)
+        far = torch.clamp(far, min=near + 0.1)
+        
+        return near, far
     
     def render_image(
         self,
@@ -314,10 +415,84 @@ class VoxelRenderer:
         Returns:
             image: [3, H, W] rendered image
         """
-        # TODO:
+        H, W = self.image_size
+        intrinsics = self.get_intrinsics()
+        
+        # Move to device
+        rgbsigma = rgbsigma.to(self.device)
+        camera_pose = camera_pose.to(self.device)
+        bbox_min = bbox_min.to(self.device)
+        bbox_max = bbox_max.to(self.device)
+        intrinsics = intrinsics.to(self.device)
+        
+        # Get rays
+        rays_o, rays_d = self.get_rays(camera_pose, intrinsics)
+        rays_o = rays_o.to(self.device)
+        rays_d = rays_d.to(self.device)
+        
+        # Compute near and far bounds using ray-bbox intersection
+        near, far = self.intersect_bbox(rays_o, rays_d, bbox_min, bbox_max)
+        
+        # Render in chunks
+        all_rgb = []
+        
+        for i in range(0, rays_o.shape[0], self.chunk):
+            chunk_rays_o = rays_o[i:i+self.chunk]
+            chunk_rays_d = rays_d[i:i+self.chunk]
+            chunk_near = near[i:i+self.chunk]
+            chunk_far = far[i:i+self.chunk]
+            
+            # Sample points along rays with per-ray near/far
+            t_vals = torch.linspace(0., 1., self.num_samples, device=self.device)
+            z_vals = chunk_near[:, None] * (1. - t_vals) + chunk_far[:, None] * t_vals
+            
+            # Perturb sampling
+            if self.perturb > 0:
+                mids = 0.5 * (z_vals[..., 1:] + z_vals[..., :-1])
+                upper = torch.cat([mids, z_vals[..., -1:]], dim=-1)
+                lower = torch.cat([z_vals[..., :1], mids], dim=-1)
+                t_rand = torch.rand_like(z_vals)
+                z_vals = lower + (upper - lower) * t_rand
+            
+            # Get sample points
+            pts = chunk_rays_o[..., None, :] + chunk_rays_d[..., None, :] * z_vals[..., :, None]
+            pts_flat = pts.reshape(-1, 3)
+            
+            # Query voxel grid
+            raw_flat = self.sample_voxel_grid(rgbsigma, pts_flat, bbox_min, bbox_max)
+            raw = raw_flat.reshape(chunk_rays_o.shape[0], self.num_samples, 4)
+            
+            # Volume rendering
+            rgb_map, weights, _ = self.raw2outputs(raw, z_vals, chunk_rays_d)
+            
+            # Hierarchical sampling
+            if self.num_importance > 0:
+                z_vals_mid = 0.5 * (z_vals[..., 1:] + z_vals[..., :-1])
+                z_samples = sample_pdf(
+                    z_vals_mid,
+                    weights[..., 1:-1],
+                    self.num_importance,
+                    det=(self.perturb == 0),
+                ).detach().to(self.device)
+                
+                z_vals_combined, _ = torch.sort(torch.cat([z_vals, z_samples], dim=-1), dim=-1)
+                
+                pts = chunk_rays_o[..., None, :] + chunk_rays_d[..., None, :] * z_vals_combined[..., :, None]
+                pts_flat = pts.reshape(-1, 3)
+                
+                raw_flat = self.sample_voxel_grid(rgbsigma, pts_flat, bbox_min, bbox_max)
+                raw = raw_flat.reshape(chunk_rays_o.shape[0], -1, 4)
+                
+                rgb_map, _, _ = self.raw2outputs(raw, z_vals_combined, chunk_rays_d)
+            
+            all_rgb.append(rgb_map)
+        
+        rgb_map = torch.cat(all_rgb, dim=0)
+        image = rgb_map.reshape(H, W, 3).permute(2, 0, 1)  # [3, H, W]
+        
+        return image.cpu()
 
-
-def process_scene(
+def process_sample(
     npz_path: str,
     output_dir: Path,
     renderer: VoxelRenderer,
@@ -325,11 +500,11 @@ def process_scene(
     save_voxel: bool = True,
 ) -> Dict:
     """
-    Process a single scene: load voxel grid, render views, save outputs.
+    Process a single sample: load voxel grid, render views, save outputs.
     
     Args:
         npz_path: Path to .npz file containing voxel grid
-        output_dir: Output directory for this scene
+        output_dir: Output directory for this sample
         renderer: VoxelRenderer instance
         num_views: Number of views to render
         save_voxel: Whether to save voxel grid (for training loss computation)
@@ -362,18 +537,20 @@ def process_scene(
         image = renderer.render_image(rgbsigma, pose, bbox_min, bbox_max)
         rendered_images.append(image)
         
-        # Save image
-        img_np = (image.permute(1, 2, 0).numpy() * 255).clip(0, 255).astype(np.uint8)
+        # Save image (ensure tensor on CPU before numpy)
+        img_np = (
+            image.detach().permute(1, 2, 0).cpu().numpy() * 255
+        ).clip(0, 255).astype(np.uint8)
         img_pil = Image.fromarray(img_np)
         img_pil.save(images_dir / f"view_{view_idx:03d}.png")
     
     # Save camera data
     np.savez(
         output_dir / "cameras.npz",
-        extrinsics=camera_poses.numpy(),
-        intrinsics=intrinsics.numpy(),
-        bbox_min=bbox_min.numpy(),
-        bbox_max=bbox_max.numpy(),
+        extrinsics=camera_poses.cpu().numpy(),
+        intrinsics=intrinsics.cpu().numpy(),
+        bbox_min=bbox_min.cpu().numpy(),
+        bbox_max=bbox_max.cpu().numpy(),
     )
     
     # Optionally save voxel grid
@@ -387,7 +564,7 @@ def process_scene(
     
     # Return metadata
     metadata = {
-        "scene_id": output_dir.name,
+        "sample_id": output_dir.name,
         "source_file": str(npz_path),
         "num_views": num_views,
         "image_size": list(renderer.image_size),
@@ -395,6 +572,41 @@ def process_scene(
     }
     
     return metadata
+
+
+def load_split_info(split_file: Path, features_dir: Path) -> Dict[str, List[str]]:
+    """
+    Load split information from nerfmae_split.npz.
+    
+    Args:
+        split_file: Path to nerfmae_split.npz
+        features_dir: Path to features directory containing .npz files
+        
+    Returns:
+        Dictionary mapping split name to list of npz file paths
+    """
+    split_data = np.load(split_file, allow_pickle=True)
+    
+    # Build a set of available files for quick lookup
+    available_files = {f.stem: str(f) for f in features_dir.glob("*.npz")}
+    
+    splits = {}
+    for split_name in ['train', 'val', 'test']:
+        key = f"{split_name}_scenes"
+        if key in split_data:
+            sample_names = split_data[key]
+            # Match sample names to actual files
+            split_files = []
+            for name in sample_names:
+                name_str = str(name)
+                if name_str in available_files:
+                    split_files.append(available_files[name_str])
+            splits[split_name] = split_files
+            print(f"  {split_name}: {len(split_files)} samples (from {len(sample_names)} in split file)")
+        else:
+            splits[split_name] = []
+    
+    return splits
 
 
 def main():
@@ -405,7 +617,7 @@ def main():
     parser.add_argument("--output_dir", type=str, required=True,
                         help="Output directory for rendered data")
     parser.add_argument("--num_views", type=int, default=8,
-                        help="Number of views to render per scene")
+                        help="Number of views to render per sample")
     parser.add_argument("--image_size", type=int, default=256,
                         help="Image size (height and width)")
     parser.add_argument("--num_samples", type=int, default=64,
@@ -418,28 +630,30 @@ def main():
                         help="Don't save voxel grid")
     parser.add_argument("--device", type=str, default="cuda",
                         help="Device to use for rendering")
-    parser.add_argument("--max_scenes", type=int, default=None,
-                        help="Maximum number of scenes to process (for testing)")
-    parser.add_argument("--train_ratio", type=float, default=0.8,
-                        help="Ratio of scenes for training set")
+    parser.add_argument("--max_samples", type=int, default=None,
+                        help="Maximum number of samples to process per split (for testing)")
+    parser.add_argument("--splits", type=str, nargs="+", default=["train", "val", "test"],
+                        help="Which splits to process")
     
     args = parser.parse_args()
     
     input_dir = Path(args.input_dir)
     output_dir = Path(args.output_dir)
     features_dir = input_dir / "features"
+    split_file = input_dir / "nerfmae_split.npz"
     
     # Check input directory
     if not features_dir.exists():
         print(f"Error: Features directory not found: {features_dir}")
         return
     
-    # Get all .npz files
-    npz_files = sorted(features_dir.glob("*.npz"))
-    if args.max_scenes:
-        npz_files = npz_files[:args.max_scenes]
+    if not split_file.exists():
+        print(f"Error: Split file not found: {split_file}")
+        return
     
-    print(f"Found {len(npz_files)} scene files")
+    # Load split information
+    print("Loading split information...")
+    splits = load_split_info(split_file, features_dir)
     
     # Create renderer
     renderer = VoxelRenderer(
@@ -449,44 +663,60 @@ def main():
         device=args.device,
     )
     
-    # Create output directory
+    # Create output directories
     output_dir.mkdir(parents=True, exist_ok=True)
+    samples_dir = output_dir / "samples"
+    samples_dir.mkdir(exist_ok=True)
     
-    # Process scenes
-    all_metadata = []
-    failed_scenes = []
+    # Process each split
+    all_results = {}
     
-    for npz_file in tqdm(npz_files, desc="Processing scenes"):
-        scene_name = npz_file.stem
-        scene_output_dir = output_dir / f"scene_{scene_name}"
-        
-        try:
-            metadata = process_scene(
-                str(npz_file),
-                scene_output_dir,
-                renderer,
-                num_views=args.num_views,
-                save_voxel=args.save_voxel,
-            )
-            all_metadata.append(metadata)
-        except Exception as e:
-            print(f"\nError processing {scene_name}: {e}")
-            failed_scenes.append(scene_name)
+    for split_name in args.splits:
+        if split_name not in splits:
+            print(f"Warning: Split '{split_name}' not found, skipping")
             continue
-    
-    print(f"\nProcessed {len(all_metadata)} scenes, {len(failed_scenes)} failed")
-    
-    # Split into train/val
-    num_train = int(len(all_metadata) * args.train_ratio)
-    train_scenes = all_metadata[:num_train]
-    val_scenes = all_metadata[num_train:]
-    
-    # Save index files
-    with open(output_dir / "train_scenes.json", "w") as f:
-        json.dump(train_scenes, f, indent=2)
-    
-    with open(output_dir / "val_scenes.json", "w") as f:
-        json.dump(val_scenes, f, indent=2)
+        
+        npz_files = splits[split_name]
+        if args.max_samples:
+            npz_files = npz_files[:args.max_samples]
+        
+        print(f"\nProcessing {split_name} split: {len(npz_files)} samples")
+        
+        split_metadata = []
+        failed_samples = []
+        
+        for npz_path in tqdm(npz_files, desc=f"Processing {split_name}"):
+            sample_name = Path(npz_path).stem
+            sample_output_dir = samples_dir / sample_name
+            
+            try:
+                metadata = process_sample(
+                    npz_path,
+                    sample_output_dir,
+                    renderer,
+                    num_views=args.num_views,
+                    save_voxel=args.save_voxel,
+                )
+                split_metadata.append(metadata)
+            except Exception as e:
+                print(f"\nError processing {sample_name}: {e}")
+                failed_samples.append(sample_name)
+                continue
+        
+        # Save split index file
+        split_info = {
+            "samples": split_metadata,
+            "failed": failed_samples,
+        }
+        with open(output_dir / f"{split_name}_samples.json", "w") as f:
+            json.dump(split_info, f, indent=2)
+        
+        all_results[split_name] = {
+            "processed": len(split_metadata),
+            "failed": len(failed_samples),
+        }
+        
+        print(f"  Processed: {len(split_metadata)}, Failed: {len(failed_samples)}")
     
     # Save config
     config = {
@@ -495,16 +725,14 @@ def main():
         "num_samples": args.num_samples,
         "num_importance": args.num_importance,
         "save_voxel": args.save_voxel,
-        "num_train_scenes": len(train_scenes),
-        "num_val_scenes": len(val_scenes),
-        "failed_scenes": failed_scenes,
+        "results": all_results,
     }
     with open(output_dir / "config.json", "w") as f:
         json.dump(config, f, indent=2)
     
     print(f"\nData generation complete!")
-    print(f"  Train scenes: {len(train_scenes)}")
-    print(f"  Val scenes: {len(val_scenes)}")
+    for split_name, result in all_results.items():
+        print(f"  {split_name}: {result['processed']} processed, {result['failed']} failed")
     print(f"  Output directory: {output_dir}")
 
 
