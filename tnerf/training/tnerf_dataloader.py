@@ -57,6 +57,7 @@ class TNerfDataset(Dataset):
     def __init__(
         self,
         data_dir: str,
+        voxel_dir: str,
         split: str = "train",
         image_size: Tuple[int, int] = (518, 518),
         num_views: int = 8,
@@ -73,9 +74,11 @@ class TNerfDataset(Dataset):
             num_views: Number of views to load per sample
             transform: Optional image transforms
             load_voxel: Whether to load voxel grid (for loss computation)
+            voxel_dir: Directory containing voxel grids
         """
         self.data_dir = Path(data_dir)
-        self.samples_dir = self.data_dir / "samples"
+        self.samples_dir = self.data_dir / "samples"  # Containing img and camera data
+        self.voxel_dir = Path(voxel_dir) # Containing voxel grids  \path\to\features
         self.split = split
         self.image_size = image_size
         self.num_views = num_views
@@ -100,72 +103,32 @@ class TNerfDataset(Dataset):
         if index_path.exists():
             with open(index_path, "r") as f:
                 data = json.load(f)
-            # Handle both formats: list or dict with "samples" key
-            if isinstance(data, dict) and "samples" in data:
                 samples = data["samples"]
-            else:
-                samples = data
             return samples
         
-        # Fallback: try old format (train_scenes.json)
-        old_index_path = self.data_dir / f"{self.split}_scenes.json"
-        if old_index_path.exists():
-            with open(old_index_path, "r") as f:
-                return json.load(f)
-        
-        # Fallback: scan for sample directories
-        print(f"Warning: Index file not found, scanning directories...")
-        samples = []
-        
-        if self.samples_dir.exists():
-            sample_dirs = sorted(self.samples_dir.glob("*"))
         else:
-            # Try old structure
-            sample_dirs = sorted(self.data_dir.glob("scene_*"))
-        
-        for sample_dir in sample_dirs:
-            if sample_dir.is_dir() and (sample_dir / "images").exists():
-                samples.append({
-                    "sample_id": sample_dir.name,
-                })
-        
-        # Simple split if no split file
-        if self.split == "train":
-            return samples[:int(len(samples) * 0.8)]
-        elif self.split == "val":
-            return samples[int(len(samples) * 0.8):int(len(samples) * 0.9)]
-        else:  # test
-            return samples[int(len(samples) * 0.9):]
+            print(f"Warning: Index file {index_path} not found.")
+            return []
     
     def __len__(self) -> int:
         return len(self.samples)
     
     def _get_sample_path(self, sample_info: Dict) -> Path:
         """Get the path to a sample directory."""
-        sample_id = sample_info.get("sample_id", sample_info.get("scene_id", ""))
+        sample_id = sample_info.get("sample_id", "")
         
         # Try new structure first
         sample_path = self.samples_dir / sample_id
         if sample_path.exists():
             return sample_path
-        
-        # Try old structure
-        sample_path = self.data_dir / sample_id
-        if sample_path.exists():
-            return sample_path
-        
-        # Try with scene_ prefix (old format)
-        sample_path = self.data_dir / f"scene_{sample_id}"
-        if sample_path.exists():
-            return sample_path
-        
-        raise FileNotFoundError(f"Sample directory not found for: {sample_id}")
+        else:        
+            raise FileNotFoundError(f"Sample directory not found for: {sample_id}")
     
     def __getitem__(self, idx: int) -> Dict[str, torch.Tensor]:
         """Load a single sample."""
         sample_info = self.samples[idx]
         sample_path = self._get_sample_path(sample_info)
-        sample_id = sample_info.get("sample_id", sample_info.get("scene_id", sample_path.name))
+        sample_id = sample_info.get("sample_id", "")
         
         images_dir = sample_path / "images"
         
@@ -173,16 +136,12 @@ class TNerfDataset(Dataset):
         images = []
         image_files = sorted(images_dir.glob("view_*.png"))
         
-        if len(image_files) == 0:
-            # Fallback to any image format
-            image_files = sorted(images_dir.glob("*.png")) + sorted(images_dir.glob("*.jpg"))
-        
         for i, img_path in enumerate(image_files[:self.num_views]):
             img = Image.open(img_path).convert("RGB")
             img = self.transform(img)
             images.append(img)
         
-        # Pad with last image if necessary
+        # pad with last image or zeros
         while len(images) < self.num_views:
             if images:
                 images.append(images[-1].clone())
@@ -217,7 +176,7 @@ class TNerfDataset(Dataset):
         
         # Load voxel grid for loss computation
         if self.load_voxel:
-            voxel_path = sample_path / "rgbsigma.npz"
+            voxel_path = self.voxel_dir / f"{sample_id}.npz"
             if voxel_path.exists():
                 voxel_data = np.load(voxel_path)
                 rgbsigma = torch.from_numpy(voxel_data["rgbsigma"]).float()
@@ -225,27 +184,70 @@ class TNerfDataset(Dataset):
                 rgbsigma[..., 3] = torch.clamp(rgbsigma[..., 3], min=0.0)
                 rgbsigma[..., :3] = torch.clamp(rgbsigma[..., :3], 0.0, 1.0)
                 result["rgbsigma"] = rgbsigma
+            else:
+                raise FileNotFoundError(f"Voxel grid not found for sample: {sample_id}")
         
         return result
 
 
-def tnerf_collate_fn(batch: List[Dict]) -> Dict[str, torch.Tensor]:
+import random
+
+
+def tnerf_collate_fn(batch: List[Dict], min_views: int = 2, max_views: int = 8) -> Dict[str, torch.Tensor]:
     """
     Custom collate function for T-NeRF dataset.
     
-    Handles variable-sized voxel grids by keeping them as a list.
+    Randomly selects a number of views, and all samples in the batch use the same number of views.
+    This helps the model learn from varying numbers of input views.
+    
+    Args:
+        batch: List of samples from dataset
+        min_views: Minimum number of views to use
+        max_views: Maximum number of views to use
+        
+    Returns:
+        Collated batch with randomly selected number of views
     """
+    # Randomly select number of views for this batch
+    # All samples in the batch will have the same number of views
+    available_views = batch[0]['images'].shape[0]
+    max_views = min(max_views, available_views)
+    min_views = min(min_views, max_views)
+    num_views = random.randint(min_views, max_views)
+    
+    # Randomly select which views to use (same indices for all samples in batch)
+    view_indices = sorted(random.sample(range(available_views), num_views))
+    
     result = {}
     
-    # Stack tensor fields that have consistent shapes
-    tensor_keys = ['images', 'camera_extrinsics', 'camera_intrinsics', 'bbox_min', 'bbox_max']
-    for key in tensor_keys:
-        if key in batch[0]:
-            try:
-                result[key] = torch.stack([item[key] for item in batch], dim=0)
-            except RuntimeError:
-                # If shapes don't match, keep as list
-                result[key] = [item[key] for item in batch]
+    # Stack tensor fields with selected views
+    if 'images' in batch[0]:
+        # Select subset of views: [S, 3, H, W] -> [num_views, 3, H, W]
+        result['images'] = torch.stack([
+            item['images'][view_indices] for item in batch
+        ], dim=0)  # [B, num_views, 3, H, W]
+    
+    if 'camera_extrinsics' in batch[0]:
+        # Select subset of camera poses: [S, 4, 4] -> [num_views, 4, 4]
+        result['camera_extrinsics'] = torch.stack([
+            item['camera_extrinsics'][view_indices] for item in batch
+        ], dim=0)  # [B, num_views, 4, 4]
+    
+    # These don't depend on number of views
+    if 'camera_intrinsics' in batch[0]:
+        result['camera_intrinsics'] = torch.stack([
+            item['camera_intrinsics'] for item in batch
+        ], dim=0)
+    
+    if 'bbox_min' in batch[0]:
+        result['bbox_min'] = torch.stack([
+            item['bbox_min'] for item in batch
+        ], dim=0)
+    
+    if 'bbox_max' in batch[0]:
+        result['bbox_max'] = torch.stack([
+            item['bbox_max'] for item in batch
+        ], dim=0)
     
     # Keep rgbsigma as list (variable sizes)
     if 'rgbsigma' in batch[0]:
@@ -255,16 +257,39 @@ def tnerf_collate_fn(batch: List[Dict]) -> Dict[str, torch.Tensor]:
     if 'sample_id' in batch[0]:
         result['sample_id'] = [item['sample_id'] for item in batch]
     
+    # Store the number of views and indices used for this batch
+    result['num_views'] = num_views
+    result['view_indices'] = view_indices
+    
     return result
+
+
+def create_tnerf_collate_fn(min_views: int = 2, max_views: int = 8):
+    """
+    Create a collate function with specific min/max view settings.
+    
+    Args:
+        min_views: Minimum number of views per batch
+        max_views: Maximum number of views per batch
+        
+    Returns:
+        Collate function with the specified settings
+    """
+    def collate_fn(batch):
+        return tnerf_collate_fn(batch, min_views=min_views, max_views=max_views)
+    return collate_fn
 
 
 def create_tnerf_dataloaders(
     data_dir: str,
+    voxel_dir: str,
     batch_size: int = 2,
     num_workers: int = 4,
     image_size: Tuple[int, int] = (518, 518),
     num_views: int = 8,
     load_voxel: bool = True,
+    min_views: int = 2,
+    max_views: int = 8,
 ) -> Tuple[DataLoader, DataLoader, Optional[DataLoader]]:
     """
     Create training, validation, and test dataloaders for T-NeRF.
@@ -274,15 +299,21 @@ def create_tnerf_dataloaders(
         batch_size: Batch size
         num_workers: Number of data loading workers
         image_size: Target image size (for VGGT input)
-        num_views: Number of views per sample
+        num_views: Number of views per sample (max views to load from disk)
         load_voxel: Whether to load voxel grids for loss computation
+        min_views: Minimum number of views per batch (for random view sampling)
+        max_views: Maximum number of views per batch (defaults to num_views)
     
     Returns:
         Tuple of (train_loader, val_loader, test_loader)
         test_loader may be None if no test data exists
     """
+    if max_views is None:
+        max_views = num_views
+    
     train_dataset = TNerfDataset(
         data_dir=data_dir,
+        voxel_dir=voxel_dir,
         split="train",
         image_size=image_size,
         num_views=num_views,
@@ -291,11 +322,17 @@ def create_tnerf_dataloaders(
     
     val_dataset = TNerfDataset(
         data_dir=data_dir,
+        voxel_dir=voxel_dir,
         split="val",
         image_size=image_size,
         num_views=num_views,
         load_voxel=load_voxel,
     )
+    
+    # Create collate function with random view sampling for training
+    train_collate_fn = create_tnerf_collate_fn(min_views=min_views, max_views=max_views)
+    # Use fixed max views for validation (consistent evaluation)
+    val_collate_fn = create_tnerf_collate_fn(min_views=max_views, max_views=max_views)
     
     train_loader = DataLoader(
         train_dataset,
@@ -304,7 +341,7 @@ def create_tnerf_dataloaders(
         num_workers=num_workers,
         pin_memory=True,
         drop_last=True,
-        collate_fn=tnerf_collate_fn,
+        collate_fn=train_collate_fn,
     )
     
     val_loader = DataLoader(
@@ -313,7 +350,7 @@ def create_tnerf_dataloaders(
         shuffle=False,
         num_workers=num_workers,
         pin_memory=True,
-        collate_fn=tnerf_collate_fn,
+        collate_fn=val_collate_fn,
     )
     
     # Try to create test loader
@@ -321,6 +358,7 @@ def create_tnerf_dataloaders(
     try:
         test_dataset = TNerfDataset(
             data_dir=data_dir,
+            voxel_dir=voxel_dir,
             split="test",
             image_size=image_size,
             num_views=num_views,
@@ -333,18 +371,12 @@ def create_tnerf_dataloaders(
                 shuffle=False,
                 num_workers=num_workers,
                 pin_memory=True,
-                collate_fn=tnerf_collate_fn,
+                collate_fn=val_collate_fn,  # Use fixed views for test
             )
     except Exception as e:
         print(f"Note: No test data available ({e})")
     
     return train_loader, val_loader, test_loader
-
-
-# Legacy aliases for backward compatibility
-NLPDataset = TNerfDataset
-create_dataloaders = lambda *args, **kwargs: create_tnerf_dataloaders(*args, **kwargs)[:2]
-
 
 if __name__ == "__main__":
     # Test the dataloader
@@ -353,6 +385,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--data_dir", type=str, required=True,
                         help="Path to rendered data directory from generate_data.py")
+    parser.add_argument("--voxel_dir", type=str, required=True,
+                        help="Path to voxel data directory")
     parser.add_argument("--batch_size", type=int, default=2)
     parser.add_argument("--num_views", type=int, default=8)
     parser.add_argument("--image_size", type=int, default=256)
@@ -362,6 +396,7 @@ if __name__ == "__main__":
     
     train_loader, val_loader, test_loader = create_tnerf_dataloaders(
         data_dir=args.data_dir,
+        voxel_dir=args.voxel_dir,
         batch_size=args.batch_size,
         num_views=args.num_views,
         image_size=(args.image_size, args.image_size),
