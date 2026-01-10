@@ -12,7 +12,11 @@ from vggt.models.aggregator import Aggregator
 from vggt.heads.camera_head import CameraHead
 from vggt.heads.dpt_head import DPTHead
 from vggt.heads.track_head import TrackHead
-from vggt.heads.nlp_head import NLPHead
+
+try:  # Prefer VGGT repository version if available
+    from vggt.heads.nlp_head import NLPHead
+except ModuleNotFoundError:
+    from tnerf.model.heads.nlp_head import NLPHead
 
 
 class VGGT(nn.Module, PyTorchModelHubMixin):

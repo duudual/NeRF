@@ -1,3 +1,6 @@
 data/raw_nerf/*
 *.pyc
 tnerf/data/tnerf/*
+*.npz
+*.pt
+events.*

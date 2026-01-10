@@ -31,7 +31,9 @@ Output Structure:
 
 Usage:
     python generate_data.py --input_dir /path/to/pretrain --output_dir /path/to/rendered_data
-    python generate_data.py --input_dir data/nerf-mae --output_dir data/tnerf
+    python generate_data.py --input_dir ../data/nerf-mae --output_dir ../data/tnerf
+    python generate_data.py --input_dir ../../NeRF-MAE_pretrain/NeRF-MAE/pretrain --output_dir ../data/tnerf
+
 
 """
 

@@ -14,6 +14,7 @@ Training Pipeline:
 
 Usage:
     python tnerf_training.py --data_dir /path/to/rendered_data --voxel_dir /path/to/features --pretrained_path /path/to/vggt.pt
+    python tnerf_training.py --data_dir ../data/tnerf --voxel_dir ../data/nerf-mae/features --pretrained_path ../../../vggt/model_weights/model.pt
 """
 
 import os
@@ -31,14 +32,99 @@ from tqdm import tqdm
 from tnerf_loss import TNerfLoss
 from tnerf_mlp import BatchedNeRFMLP
 
-# Add parent directory to path for imports
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+# Add relevant project directories to path for local imports
+CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+PROJECT_ROOT = os.path.abspath(os.path.join(CURRENT_DIR, '..', '..', '..'))
+VGGT_REPO = os.path.join(PROJECT_ROOT, 'vggt')
+
+sys.path.insert(0, CURRENT_DIR)
+sys.path.insert(0, os.path.abspath(os.path.join(CURRENT_DIR, '..')))
+sys.path.insert(0, os.path.abspath(os.path.join(CURRENT_DIR, '..', '..')))
+sys.path.insert(0, PROJECT_ROOT)
+sys.path.insert(0, VGGT_REPO)
 
 from tnerf_dataloader import TNerfDataset, create_tnerf_dataloaders
-from model.models.vggt import VGGT
+from tnerf.model.models.vggt import VGGT
 
 
-
+def parse_args():
+    parser = argparse.ArgumentParser(description="Train NLPHead with T-NeRF data")
+    
+    # Data paths
+    parser.add_argument("--data_dir", type=str, required=True,
+                        help="Path to rendered data from generate_data.py")
+    parser.add_argument("--voxel_dir", type=str, required=True,
+                        help="Path to voxel features directory (e.g., pretrain/features)")
+    
+    # Model paths
+    parser.add_argument("--pretrained_path", type=str, default=None,
+                        help="Path to pretrained VGGT model weights")
+    parser.add_argument("--checkpoint_dir", type=str, default="../checkpoints_tnerf",
+                        help="Directory to save checkpoints")
+    parser.add_argument("--resume", type=str, default=None,
+                        help="Path to checkpoint to resume from")
+    
+    # Training hyperparameters
+    parser.add_argument("--batch_size", type=int, default=10,
+                        help="Batch size")
+    parser.add_argument("--num_epochs", type=int, default=5,
+                        help="Number of epochs")
+    parser.add_argument("--lr", type=float, default=1e-4,
+                        help="Learning rate")
+    parser.add_argument("--weight_decay", type=float, default=1e-5,
+                        help="Weight decay")
+    parser.add_argument("--grad_clip", type=float, default=1.0,
+                        help="Gradient clipping norm")
+    
+    # Model settings
+    parser.add_argument("--image_size", type=int, default=280,
+                        help="Image size for input")
+    parser.add_argument("--num_views", type=int, default=5,
+                        help="Number of views to load per sample")
+    parser.add_argument("--min_views", type=int, default=2,
+                        help="Minimum views for training (random sampling)")
+    parser.add_argument("--max_views", type=int, default=5,
+                        help="Maximum views for training (random sampling)")
+    
+    # Point sampling settings for loss computation
+    parser.add_argument("--num_sample_points", type=int, default=4096,
+                        help="Number of 3D points to sample for loss computation")
+    parser.add_argument("--valid_point_ratio", type=float, default=0.7,
+                        help="Ratio of valid (non-empty) points in sampling")
+    parser.add_argument("--empty_value", type=float, default=-10000.0,
+                        help="Sigma value marking empty voxels (default: -10000)")
+    
+    # Freeze settings
+    parser.add_argument("--freeze_backbone", action="store_true", default=True,
+                        help="Freeze VGGT backbone")
+    parser.add_argument("--freeze_other_heads", action="store_true", default=True,
+                        help="Freeze other heads")
+    
+    # Loss weights
+    parser.add_argument("--rgb_weight", type=float, default=1.0,
+                        help="Weight for RGB loss")
+    parser.add_argument("--sigma_weight", type=float, default=0.1,
+                        help="Weight for sigma loss")
+    parser.add_argument("--reg_weight", type=float, default=0.001,
+                        help="Weight for parameter regularization")
+    
+    # Logging
+    parser.add_argument("--log_dir", type=str, default="./logs_tnerf",
+                        help="TensorBoard log directory")
+    parser.add_argument("--log_freq", type=int, default=50,
+                        help="Logging frequency (steps)")
+    parser.add_argument("--save_freq", type=int, default=5,
+                        help="Checkpoint save frequency (epochs)")
+    parser.add_argument("--vis_freq", type=int, default=200,
+                        help="Visualization frequency (steps)")
+    
+    # Hardware
+    parser.add_argument("--device", type=str, default="cuda",
+                        help="Device")
+    parser.add_argument("--num_workers", type=int, default=0,
+                        help="Data loading workers")
+    
+    return parser.parse_args()
 
 class PointSampler:
     """
@@ -578,86 +664,6 @@ class TNerfTrainer:
         
         self.logger.info("Training completed!")
         self.writer.close()
-
-def parse_args():
-    parser = argparse.ArgumentParser(description="Train NLPHead with T-NeRF data")
-    
-    # Data paths
-    parser.add_argument("--data_dir", type=str, required=True,
-                        help="Path to rendered data from generate_data.py")
-    parser.add_argument("--voxel_dir", type=str, required=True,
-                        help="Path to voxel features directory (e.g., pretrain/features)")
-    
-    # Model paths
-    parser.add_argument("--pretrained_path", type=str, default=None,
-                        help="Path to pretrained VGGT model weights")
-    parser.add_argument("--checkpoint_dir", type=str, default="./checkpoints_tnerf",
-                        help="Directory to save checkpoints")
-    parser.add_argument("--resume", type=str, default=None,
-                        help="Path to checkpoint to resume from")
-    
-    # Training hyperparameters
-    parser.add_argument("--batch_size", type=int, default=1,
-                        help="Batch size")
-    parser.add_argument("--num_epochs", type=int, default=100,
-                        help="Number of epochs")
-    parser.add_argument("--lr", type=float, default=1e-4,
-                        help="Learning rate")
-    parser.add_argument("--weight_decay", type=float, default=1e-5,
-                        help="Weight decay")
-    parser.add_argument("--grad_clip", type=float, default=1.0,
-                        help="Gradient clipping norm")
-    
-    # Model settings
-    parser.add_argument("--image_size", type=int, default=256,
-                        help="Image size for input")
-    parser.add_argument("--num_views", type=int, default=8,
-                        help="Number of views to load per sample")
-    parser.add_argument("--min_views", type=int, default=2,
-                        help="Minimum views for training (random sampling)")
-    parser.add_argument("--max_views", type=int, default=8,
-                        help="Maximum views for training (random sampling)")
-    
-    # Point sampling settings for loss computation
-    parser.add_argument("--num_sample_points", type=int, default=4096,
-                        help="Number of 3D points to sample for loss computation")
-    parser.add_argument("--valid_point_ratio", type=float, default=0.7,
-                        help="Ratio of valid (non-empty) points in sampling")
-    parser.add_argument("--empty_value", type=float, default=-10000.0,
-                        help="Sigma value marking empty voxels (default: -10000)")
-    
-    # Freeze settings
-    parser.add_argument("--freeze_backbone", action="store_true", default=True,
-                        help="Freeze VGGT backbone")
-    parser.add_argument("--freeze_other_heads", action="store_true", default=True,
-                        help="Freeze other heads")
-    
-    # Loss weights
-    parser.add_argument("--rgb_weight", type=float, default=1.0,
-                        help="Weight for RGB loss")
-    parser.add_argument("--sigma_weight", type=float, default=0.1,
-                        help="Weight for sigma loss")
-    parser.add_argument("--reg_weight", type=float, default=0.001,
-                        help="Weight for parameter regularization")
-    
-    # Logging
-    parser.add_argument("--log_dir", type=str, default="./logs_tnerf",
-                        help="TensorBoard log directory")
-    parser.add_argument("--log_freq", type=int, default=50,
-                        help="Logging frequency (steps)")
-    parser.add_argument("--save_freq", type=int, default=5,
-                        help="Checkpoint save frequency (epochs)")
-    parser.add_argument("--vis_freq", type=int, default=200,
-                        help="Visualization frequency (steps)")
-    
-    # Hardware
-    parser.add_argument("--device", type=str, default="cuda",
-                        help="Device")
-    parser.add_argument("--num_workers", type=int, default=0,
-                        help="Data loading workers")
-    
-    return parser.parse_args()
-
 
 def main():
     args = parse_args()

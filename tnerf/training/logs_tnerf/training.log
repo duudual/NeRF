@@ -1,0 +1,97 @@
+2026-01-10 01:14:45,301 - INFO - Device: cuda
+2026-01-10 01:14:45,301 - INFO - Args: {'data_dir': '../data/tnerf', 'voxel_dir': '../data/nerf-mae', 'pretrained_path': '../../../vggt/model_weights/model.pt', 'checkpoint_dir': '../checkpoints_tnerf', 'resume': None, 'batch_size': 10, 'num_epochs': 5, 'lr': 0.0001, 'weight_decay': 1e-05, 'grad_clip': 1.0, 'image_size': 256, 'num_views': 5, 'min_views': 2, 'max_views': 5, 'num_sample_points': 4096, 'valid_point_ratio': 0.7, 'empty_value': -10000.0, 'freeze_backbone': True, 'freeze_other_heads': True, 'rgb_weight': 1.0, 'sigma_weight': 0.1, 'reg_weight': 0.001, 'log_dir': './logs_tnerf', 'log_freq': 50, 'save_freq': 5, 'vis_freq': 200, 'device': 'cuda', 'num_workers': 0}
+2026-01-10 01:14:45,301 - INFO - Building VGGT model...
+2026-01-10 01:14:45,309 - INFO - using MLP layer as FFN
+2026-01-10 01:14:49,400 - INFO - Loading pretrained weights from ../../../vggt/model_weights/model.pt
+2026-01-10 01:14:52,280 - INFO - Missing: 64, Unexpected: 587
+2026-01-10 01:14:53,301 - INFO - Freezing backbone...
+2026-01-10 01:14:53,303 - INFO - Freezing other heads...
+2026-01-10 01:14:53,307 - INFO - Trainable: 37,815,637 / 946,927,957
+2026-01-10 01:14:53,307 - INFO - Loading data from ../data/tnerf
+2026-01-10 01:14:53,307 - INFO - Voxel data from ../data/nerf-mae
+2026-01-10 01:14:53,311 - INFO - Train batches: 2
+2026-01-10 01:14:53,311 - INFO - Val batches: 1
+2026-01-10 01:14:53,311 - INFO - Starting training...
+2026-01-10 01:15:30,107 - INFO - Device: cuda
+2026-01-10 01:15:30,107 - INFO - Args: {'data_dir': '../data/tnerf', 'voxel_dir': '../data/nerf-mae', 'pretrained_path': '../../../vggt/model_weights/model.pt', 'checkpoint_dir': '../checkpoints_tnerf', 'resume': None, 'batch_size': 10, 'num_epochs': 5, 'lr': 0.0001, 'weight_decay': 1e-05, 'grad_clip': 1.0, 'image_size': 256, 'num_views': 5, 'min_views': 2, 'max_views': 5, 'num_sample_points': 4096, 'valid_point_ratio': 0.7, 'empty_value': -10000.0, 'freeze_backbone': True, 'freeze_other_heads': True, 'rgb_weight': 1.0, 'sigma_weight': 0.1, 'reg_weight': 0.001, 'log_dir': './logs_tnerf', 'log_freq': 50, 'save_freq': 5, 'vis_freq': 200, 'device': 'cuda', 'num_workers': 0}
+2026-01-10 01:15:30,108 - INFO - Building VGGT model...
+2026-01-10 01:15:30,114 - INFO - using MLP layer as FFN
+2026-01-10 01:15:33,928 - INFO - Loading pretrained weights from ../../../vggt/model_weights/model.pt
+2026-01-10 01:15:35,746 - INFO - Missing: 64, Unexpected: 587
+2026-01-10 01:15:36,723 - INFO - Freezing backbone...
+2026-01-10 01:15:36,727 - INFO - Freezing other heads...
+2026-01-10 01:15:36,730 - INFO - Trainable: 37,815,637 / 946,927,957
+2026-01-10 01:15:36,731 - INFO - Loading data from ../data/tnerf
+2026-01-10 01:15:36,732 - INFO - Voxel data from ../data/nerf-mae
+2026-01-10 01:15:36,734 - INFO - Train batches: 2
+2026-01-10 01:15:36,734 - INFO - Val batches: 1
+2026-01-10 01:15:36,734 - INFO - Starting training...
+2026-01-10 01:18:31,441 - INFO - Device: cuda
+2026-01-10 01:18:31,442 - INFO - Args: {'data_dir': '../data/tnerf', 'voxel_dir': '../data/nerf-mae/features', 'pretrained_path': '../../../vggt/model_weights/model.pt', 'checkpoint_dir': '../checkpoints_tnerf', 'resume': None, 'batch_size': 10, 'num_epochs': 5, 'lr': 0.0001, 'weight_decay': 1e-05, 'grad_clip': 1.0, 'image_size': 256, 'num_views': 5, 'min_views': 2, 'max_views': 5, 'num_sample_points': 4096, 'valid_point_ratio': 0.7, 'empty_value': -10000.0, 'freeze_backbone': True, 'freeze_other_heads': True, 'rgb_weight': 1.0, 'sigma_weight': 0.1, 'reg_weight': 0.001, 'log_dir': './logs_tnerf', 'log_freq': 50, 'save_freq': 5, 'vis_freq': 200, 'device': 'cuda', 'num_workers': 0}
+2026-01-10 01:18:31,442 - INFO - Building VGGT model...
+2026-01-10 01:18:31,449 - INFO - using MLP layer as FFN
+2026-01-10 01:18:35,408 - INFO - Loading pretrained weights from ../../../vggt/model_weights/model.pt
+2026-01-10 01:18:37,159 - INFO - Missing: 64, Unexpected: 587
+2026-01-10 01:18:38,238 - INFO - Freezing backbone...
+2026-01-10 01:18:38,241 - INFO - Freezing other heads...
+2026-01-10 01:18:38,246 - INFO - Trainable: 37,815,637 / 946,927,957
+2026-01-10 01:18:38,247 - INFO - Loading data from ../data/tnerf
+2026-01-10 01:18:38,247 - INFO - Voxel data from ../data/nerf-mae/features
+2026-01-10 01:18:38,249 - INFO - Train batches: 2
+2026-01-10 01:18:38,249 - INFO - Val batches: 1
+2026-01-10 01:18:38,249 - INFO - Starting training...
+2026-01-10 01:18:39,812 - WARNING - Error in batch 0: Input image height 256 is not a multiple of patch height 14
+2026-01-10 01:18:41,310 - WARNING - Error in batch 1: Input image height 256 is not a multiple of patch height 14
+2026-01-10 01:18:41,313 - INFO - Epoch 0 - Train: 0.000000
+2026-01-10 01:18:41,496 - WARNING - Val error: Input image height 256 is not a multiple of patch height 14
+2026-01-10 01:18:41,497 - INFO - Epoch 0 - Val: rgb=0.000000, sigma=0.000000, total=0.000000
+2026-01-10 01:18:43,021 - WARNING - Error in batch 0: Input image height 256 is not a multiple of patch height 14
+2026-01-10 01:18:44,468 - WARNING - Error in batch 1: Input image height 256 is not a multiple of patch height 14
+2026-01-10 01:18:44,471 - INFO - Epoch 1 - Train: 0.000000
+2026-01-10 01:18:44,646 - WARNING - Val error: Input image height 256 is not a multiple of patch height 14
+2026-01-10 01:18:44,646 - INFO - Epoch 1 - Val: rgb=0.000000, sigma=0.000000, total=0.000000
+2026-01-10 01:18:45,927 - WARNING - Error in batch 0: Input image height 256 is not a multiple of patch height 14
+2026-01-10 01:19:53,535 - INFO - Device: cuda
+2026-01-10 01:19:53,536 - INFO - Args: {'data_dir': '../data/tnerf', 'voxel_dir': '../data/nerf-mae/features', 'pretrained_path': '../../../vggt/model_weights/model.pt', 'checkpoint_dir': '../checkpoints_tnerf', 'resume': None, 'batch_size': 10, 'num_epochs': 5, 'lr': 0.0001, 'weight_decay': 1e-05, 'grad_clip': 1.0, 'image_size': 280, 'num_views': 5, 'min_views': 2, 'max_views': 5, 'num_sample_points': 4096, 'valid_point_ratio': 0.7, 'empty_value': -10000.0, 'freeze_backbone': True, 'freeze_other_heads': True, 'rgb_weight': 1.0, 'sigma_weight': 0.1, 'reg_weight': 0.001, 'log_dir': './logs_tnerf', 'log_freq': 50, 'save_freq': 5, 'vis_freq': 200, 'device': 'cuda', 'num_workers': 0}
+2026-01-10 01:19:53,536 - INFO - Building VGGT model...
+2026-01-10 01:19:53,543 - INFO - using MLP layer as FFN
+2026-01-10 01:19:57,413 - INFO - Loading pretrained weights from ../../../vggt/model_weights/model.pt
+2026-01-10 01:19:59,068 - INFO - Missing: 64, Unexpected: 587
+2026-01-10 01:20:00,096 - INFO - Freezing backbone...
+2026-01-10 01:20:00,098 - INFO - Freezing other heads...
+2026-01-10 01:20:00,103 - INFO - Trainable: 37,815,637 / 946,927,957
+2026-01-10 01:20:00,103 - INFO - Loading data from ../data/tnerf
+2026-01-10 01:20:00,103 - INFO - Voxel data from ../data/nerf-mae/features
+2026-01-10 01:20:00,106 - INFO - Train batches: 2
+2026-01-10 01:20:00,106 - INFO - Val batches: 1
+2026-01-10 01:20:00,106 - INFO - Starting training...
+2026-01-10 11:33:56,702 - INFO - Device: cuda
+2026-01-10 11:33:56,705 - INFO - Args: {'data_dir': '../data/tnerf', 'voxel_dir': '../data/nerf-mae', 'pretrained_path': '../../../vggt/model_weights/model.pt', 'checkpoint_dir': '../checkpoints_tnerf', 'resume': None, 'batch_size': 10, 'num_epochs': 5, 'lr': 0.0001, 'weight_decay': 1e-05, 'grad_clip': 1.0, 'image_size': 280, 'num_views': 5, 'min_views': 2, 'max_views': 5, 'num_sample_points': 4096, 'valid_point_ratio': 0.7, 'empty_value': -10000.0, 'freeze_backbone': True, 'freeze_other_heads': True, 'rgb_weight': 1.0, 'sigma_weight': 0.1, 'reg_weight': 0.001, 'log_dir': './logs_tnerf', 'log_freq': 50, 'save_freq': 5, 'vis_freq': 200, 'device': 'cuda', 'num_workers': 0}
+2026-01-10 11:33:56,705 - INFO - Building VGGT model...
+2026-01-10 11:33:56,712 - INFO - using MLP layer as FFN
+2026-01-10 11:34:03,081 - INFO - Loading pretrained weights from ../../../vggt/model_weights/model.pt
+2026-01-10 11:34:06,274 - INFO - Missing: 64, Unexpected: 587
+2026-01-10 11:34:07,230 - INFO - Freezing backbone...
+2026-01-10 11:34:07,234 - INFO - Freezing other heads...
+2026-01-10 11:34:07,240 - INFO - Trainable: 37,815,637 / 946,927,957
+2026-01-10 11:34:07,240 - INFO - Loading data from ../data/tnerf
+2026-01-10 11:34:07,240 - INFO - Voxel data from ../data/nerf-mae
+2026-01-10 11:34:07,246 - INFO - Train batches: 2
+2026-01-10 11:34:07,246 - INFO - Val batches: 1
+2026-01-10 11:34:07,246 - INFO - Starting training...
+2026-01-10 11:34:42,548 - INFO - Device: cuda
+2026-01-10 11:34:42,548 - INFO - Args: {'data_dir': '../data/tnerf', 'voxel_dir': '../data/nerf-mae/features', 'pretrained_path': '../../../vggt/model_weights/model.pt', 'checkpoint_dir': '../checkpoints_tnerf', 'resume': None, 'batch_size': 10, 'num_epochs': 5, 'lr': 0.0001, 'weight_decay': 1e-05, 'grad_clip': 1.0, 'image_size': 280, 'num_views': 5, 'min_views': 2, 'max_views': 5, 'num_sample_points': 4096, 'valid_point_ratio': 0.7, 'empty_value': -10000.0, 'freeze_backbone': True, 'freeze_other_heads': True, 'rgb_weight': 1.0, 'sigma_weight': 0.1, 'reg_weight': 0.001, 'log_dir': './logs_tnerf', 'log_freq': 50, 'save_freq': 5, 'vis_freq': 200, 'device': 'cuda', 'num_workers': 0}
+2026-01-10 11:34:42,548 - INFO - Building VGGT model...
+2026-01-10 11:34:42,553 - INFO - using MLP layer as FFN
+2026-01-10 11:34:46,690 - INFO - Loading pretrained weights from ../../../vggt/model_weights/model.pt
+2026-01-10 11:34:48,306 - INFO - Missing: 64, Unexpected: 587
+2026-01-10 11:34:49,170 - INFO - Freezing backbone...
+2026-01-10 11:34:49,174 - INFO - Freezing other heads...
+2026-01-10 11:34:49,174 - INFO - Trainable: 37,815,637 / 946,927,957
+2026-01-10 11:34:49,174 - INFO - Loading data from ../data/tnerf
+2026-01-10 11:34:49,180 - INFO - Voxel data from ../data/nerf-mae/features
+2026-01-10 11:34:49,181 - INFO - Train batches: 2
+2026-01-10 11:34:49,181 - INFO - Val batches: 1
+2026-01-10 11:34:49,181 - INFO - Starting training...
+2026-01-10 11:38:14,394 - INFO - Epoch 0 - Train: 0.397494
+2026-01-10 11:39:13,533 - INFO - Epoch 0 - Val: rgb=0.059663, sigma=2.609878, total=0.320651

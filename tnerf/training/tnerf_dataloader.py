@@ -185,7 +185,7 @@ class TNerfDataset(Dataset):
                 rgbsigma[..., :3] = torch.clamp(rgbsigma[..., :3], 0.0, 1.0)
                 result["rgbsigma"] = rgbsigma
             else:
-                raise FileNotFoundError(f"Voxel grid not found for sample: {sample_id}")
+                raise FileNotFoundError(f"Voxel grid not found for sample: {sample_id} in {voxel_path}")
         
         return result
 
