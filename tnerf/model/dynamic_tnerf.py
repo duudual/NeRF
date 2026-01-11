@@ -222,6 +222,26 @@ class DynamicVGGT:
         
         return preds
 
+    @torch.no_grad()
+    def forward_single(self, images: Union[torch.Tensor, List[str]], heads: List[str] = None) -> Dict[str, torch.Tensor]:
+        """
+        静态模式：从一组多视角图像预测输出（无插值）
+        
+        Args:
+            images: 输入图像，可以是:
+                - torch.Tensor: shape [S, 3, H, W] or [B, S, 3, H, W]
+                - List[str]: 图像文件路径列表
+            heads: 要运行的头列表。有效值: "camera", "depth", "point", "nlp"
+            
+        Returns:
+            包含指定头预测结果的字典
+        """
+        # 如果是路径列表，加载图像
+        if isinstance(images, list) and len(images) > 0 and isinstance(images[0], str):
+            images = load_and_preprocess_images(images)
+        
+        return self.forward(images, heads)
+
 
 def create_dynamic_vggt(
     config: str = "full",
