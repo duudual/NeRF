@@ -16,11 +16,20 @@ Usage:
     python tnerf_training.py --data_dir /path/to/rendered_data --voxel_dir /path/to/features --pretrained_path /path/to/vggt.pt
     python tnerf_training.py --data_dir ../data/tnerf --voxel_dir ../data/nerf-mae/features --pretrained_path ../../../vggt/model_weights/model.pt
     python tnerf_training.py --data_dir E:/code/cv_finalproject/data/tnerf --voxel_dir E:/code/cv_finalproject/data/NeRF-MAE_pretrain/features --pretrained_path E:/code/cv_finalproject/vggt/model_weights/model.pt
-python tnerf_training.py \
+    python tnerf_training.py \
     --voxel_dir "/media/fengwu/ZX1 1TB/code/cv_finalproject/data/NeRF-MAE_pretrain/features" \
     --data_dir "/media/fengwu/ZX1 1TB/code/cv_finalproject/data/tnerf" \
     --pretrained_path "/media/fengwu/ZX1 1TB/code/cv_finalproject/vggt/model_weights/model.pt" \
     --checkpoint_dir "/media/fengwu/ZX1 1TB/code/cv_finalproject/tnerf/checkpoints_tnerf" \
+    --num_epochs 200 \
+    
+    python tnerf_training.py \
+    --data_dir /path/to/tnerf/data \
+    --voxel_dir /path/to/features \
+    --head_type nlp \
+    --resume /path/to/checkpoints/nlp_checkpoint_latest.pt \
+    --num_epochs 100
+        
 """
 
 import os
@@ -35,7 +44,7 @@ import torch.nn.functional as F
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 
-from tnerf_loss import TNerfLoss
+from tnerf_loss import TNerfLoss, TriplaneLoss
 from tnerf_mlp import BatchedNeRFMLP
 
 # Add relevant project directories to path for local imports
@@ -70,6 +79,10 @@ def parse_args():
     parser.add_argument("--resume", type=str, default=None,
                         help="Path to checkpoint to resume from")
     
+    # Head type selection (nlp or latent)
+    parser.add_argument("--head_type", type=str, default="nlp", choices=["nlp", "latent"],
+                        help="Which head to train: 'nlp' for NLPHead, 'latent' for LatentHead")
+    
     # Training hyperparameters
     parser.add_argument("--batch_size", type=int, default=10,
                         help="Batch size")
@@ -83,7 +96,7 @@ def parse_args():
                         help="Gradient clipping norm")
     
     # Model settings
-    parser.add_argument("--image_size", type=int, default=280,
+    parser.add_argument("--image_size", type=int, default=336,
                         help="Image size for input")
     parser.add_argument("--num_views", type=int, default=5,
                         help="Number of views to load per sample")
@@ -112,7 +125,11 @@ def parse_args():
     parser.add_argument("--sigma_weight", type=float, default=0.1,
                         help="Weight for sigma loss")
     parser.add_argument("--reg_weight", type=float, default=0.001,
-                        help="Weight for parameter regularization")
+                        help="Weight for parameter regularization (NLPHead)")
+    parser.add_argument("--tv_weight", type=float, default=0.01,
+                        help="Weight for TV regularization (LatentHead)")
+    parser.add_argument("--l1_weight", type=float, default=0.001,
+                        help="Weight for L1 sparsity regularization (LatentHead)")
     
     # Logging
     parser.add_argument("--log_dir", type=str, default="./logs_tnerf",
@@ -129,6 +146,18 @@ def parse_args():
                         help="Device")
     parser.add_argument("--num_workers", type=int, default=0,
                         help="Data loading workers")
+    
+    # Early stopping
+    parser.add_argument("--early_stop_patience", type=int, default=10,
+                        help="Early stopping patience (epochs)")
+    parser.add_argument("--early_stop_min_delta", type=float, default=1e-4,
+                        help="Minimum change to qualify as improvement")
+    
+    # Warmup settings
+    parser.add_argument("--warmup_epochs", type=int, default=5,
+                        help="Number of warmup epochs")
+    parser.add_argument("--warmup_start_lr", type=float, default=1e-6,
+                        help="Starting learning rate for warmup")
     
     return parser.parse_args()
 
@@ -265,6 +294,127 @@ class PointSampler:
         return world_points, gt_rgb, gt_sigma
 
 
+class EarlyStopping:
+    """
+    Early stopping to stop training when validation loss doesn't improve.
+    """
+    
+    def __init__(self, patience: int = 10, min_delta: float = 1e-4, mode: str = 'min'):
+        """
+        Args:
+            patience: Number of epochs to wait for improvement
+            min_delta: Minimum change to qualify as improvement
+            mode: 'min' for loss (lower is better), 'max' for metrics (higher is better)
+        """
+        self.patience = patience
+        self.min_delta = min_delta
+        self.mode = mode
+        self.counter = 0
+        self.best_score = None
+        self.early_stop = False
+        self.best_epoch = 0
+        
+    def __call__(self, score: float, epoch: int) -> bool:
+        """
+        Check if training should stop.
+        
+        Args:
+            score: Current validation score (loss or metric)
+            epoch: Current epoch number
+            
+        Returns:
+            True if training should stop, False otherwise
+        """
+        if self.best_score is None:
+            self.best_score = score
+            self.best_epoch = epoch
+            return False
+        
+        # Check for improvement
+        if self.mode == 'min':
+            improved = score < (self.best_score - self.min_delta)
+        else:
+            improved = score > (self.best_score + self.min_delta)
+        
+        if improved:
+            self.best_score = score
+            self.best_epoch = epoch
+            self.counter = 0
+        else:
+            self.counter += 1
+            if self.counter >= self.patience:
+                self.early_stop = True
+        
+        return self.early_stop
+    
+    def state_dict(self) -> Dict:
+        """Return state for checkpointing."""
+        return {
+            'counter': self.counter,
+            'best_score': self.best_score,
+            'best_epoch': self.best_epoch,
+            'early_stop': self.early_stop,
+        }
+    
+    def load_state_dict(self, state_dict: Dict):
+        """Load state from checkpoint."""
+        self.counter = state_dict['counter']
+        self.best_score = state_dict['best_score']
+        self.best_epoch = state_dict['best_epoch']
+        self.early_stop = state_dict['early_stop']
+
+
+class CosineWarmupScheduler(optim.lr_scheduler._LRScheduler):
+    """
+    Cosine learning rate scheduler with warmup.
+    """
+    
+    def __init__(
+        self,
+        optimizer: optim.Optimizer,
+        warmup_epochs: int,
+        max_epochs: int,
+        warmup_start_lr: float = 1e-6,
+        eta_min: float = 1e-6,
+        last_epoch: int = -1,
+    ):
+        """
+        Args:
+            optimizer: Optimizer
+            warmup_epochs: Number of warmup epochs
+            max_epochs: Total number of epochs
+            warmup_start_lr: Starting learning rate for warmup
+            eta_min: Minimum learning rate
+            last_epoch: Last epoch number
+        """
+        self.warmup_epochs = warmup_epochs
+        self.max_epochs = max_epochs
+        self.warmup_start_lr = warmup_start_lr
+        self.eta_min = eta_min
+        
+        # Store base learning rates
+        self.base_lrs = [group['lr'] for group in optimizer.param_groups]
+        
+        super().__init__(optimizer, last_epoch)
+    
+    def get_lr(self):
+        """Calculate learning rate for current epoch."""
+        if self.last_epoch < self.warmup_epochs:
+            # Warmup phase: linear increase
+            alpha = self.last_epoch / self.warmup_epochs
+            return [
+                self.warmup_start_lr + (base_lr - self.warmup_start_lr) * alpha
+                for base_lr in self.base_lrs
+            ]
+        else:
+            # Cosine annealing phase
+            progress = (self.last_epoch - self.warmup_epochs) / (self.max_epochs - self.warmup_epochs)
+            return [
+                self.eta_min + (base_lr - self.eta_min) * 0.5 * (1 + torch.cos(torch.tensor(progress * 3.14159)))
+                for base_lr in self.base_lrs
+            ]
+
+
 class TNerfTrainer:
     """
     Trainer for NLPHead using T-NeRF data (pre-rendered images + voxel grids).
@@ -282,6 +432,7 @@ class TNerfTrainer:
         self._freeze_layers()
         self._build_optimizer()
         self._build_scheduler()
+        self._build_early_stopping()
         self._build_point_sampler()
         self._build_loss()
         self._build_dataloaders()
@@ -309,15 +460,20 @@ class TNerfTrainer:
         self.logger.info(f"Args: {vars(self.args)}")
     
     def _build_model(self):
-        """Build VGGT model with NLPHead."""
-        self.logger.info("Building VGGT model...")
+        """Build VGGT model with selected head (NLPHead or LatentHead)."""
+        self.logger.info(f"Building VGGT model with {self.args.head_type} head...")
+        
+        # Enable only the selected head
+        enable_nlp = (self.args.head_type == "nlp")
+        enable_latent = (self.args.head_type == "latent")
         
         self.model = VGGT(
             enable_camera=False,
             enable_point=False,
             enable_depth=False,
             enable_track=False,
-            enable_nlp=True,
+            enable_nlp=enable_nlp,
+            enable_latent=enable_latent,
         )
         
         # Load pretrained weights
@@ -344,7 +500,15 @@ class TNerfTrainer:
         
         if self.args.freeze_other_heads:
             self.logger.info("Freezing other heads...")
-            for head_name in ['camera_head', 'point_head', 'depth_head', 'track_head']:
+            # Freeze heads that are not being trained
+            heads_to_freeze = ['camera_head', 'point_head', 'depth_head', 'track_head']
+            # Also freeze the other head (nlp or latent) that we're not training
+            if self.args.head_type == "nlp":
+                heads_to_freeze.append('latent_head')
+            else:
+                heads_to_freeze.append('nmlp_head')
+            
+            for head_name in heads_to_freeze:
                 head = getattr(self.model, head_name, None)
                 if head is not None:
                     for param in head.parameters():
@@ -356,14 +520,21 @@ class TNerfTrainer:
         self.logger.info(f"Trainable: {trainable:,} / {total:,}")
     
     def _build_optimizer(self):
-        """Build optimizer."""
+        """Build optimizer based on head type."""
         params = []
         
-        if self.model.nmlp_head is not None:
+        # Add parameters for the selected head
+        if self.args.head_type == "nlp" and self.model.nmlp_head is not None:
             params.append({
                 "params": self.model.nmlp_head.parameters(),
                 "lr": self.args.lr,
                 "name": "nmlp_head"
+            })
+        elif self.args.head_type == "latent" and self.model.latent_head is not None:
+            params.append({
+                "params": self.model.latent_head.parameters(),
+                "lr": self.args.lr,
+                "name": "latent_head"
             })
         
         if not self.args.freeze_backbone:
@@ -373,14 +544,37 @@ class TNerfTrainer:
                 "name": "aggregator"
             })
         
+        if len(params) == 0:
+            raise ValueError(f"No parameters to optimize for head_type={self.args.head_type}")
+        
         self.optimizer = optim.AdamW(params, weight_decay=self.args.weight_decay)
     
     def _build_scheduler(self):
-        """Build learning rate scheduler."""
-        self.scheduler = optim.lr_scheduler.CosineAnnealingLR(
-            self.optimizer,
-            T_max=self.args.num_epochs,
+        """Build learning rate scheduler with warmup."""
+        self.scheduler = CosineWarmupScheduler(
+            optimizer=self.optimizer,
+            warmup_epochs=self.args.warmup_epochs,
+            max_epochs=self.args.num_epochs,
+            warmup_start_lr=self.args.warmup_start_lr,
             eta_min=self.args.lr * 0.01,
+        )
+        
+        self.logger.info(
+            f"Scheduler: warmup_epochs={self.args.warmup_epochs}, "
+            f"warmup_start_lr={self.args.warmup_start_lr:.2e}"
+        )
+    
+    def _build_early_stopping(self):
+        """Build early stopping."""
+        self.early_stopping = EarlyStopping(
+            patience=self.args.early_stop_patience,
+            min_delta=self.args.early_stop_min_delta,
+            mode='min',
+        )
+        
+        self.logger.info(
+            f"Early stopping: patience={self.args.early_stop_patience}, "
+            f"min_delta={self.args.early_stop_min_delta}"
         )
     
     def _build_point_sampler(self):
@@ -392,12 +586,22 @@ class TNerfTrainer:
         )
     
     def _build_loss(self):
-        """Build loss function."""
-        self.loss_fn = TNerfLoss(
-            rgb_weight=self.args.rgb_weight,
-            sigma_weight=self.args.sigma_weight,
-            reg_weight=self.args.reg_weight,
-        )
+        """Build loss function based on head type."""
+        if self.args.head_type == "nlp":
+            self.loss_fn = TNerfLoss(
+                rgb_weight=self.args.rgb_weight,
+                sigma_weight=self.args.sigma_weight,
+                reg_weight=self.args.reg_weight,
+            )
+            self.logger.info("Using TNerfLoss for NLPHead training")
+        else:  # latent
+            self.loss_fn = TriplaneLoss(
+                rgb_weight=self.args.rgb_weight,
+                sigma_weight=self.args.sigma_weight,
+                tv_weight=self.args.tv_weight,
+                l1_weight=self.args.l1_weight,
+            )
+            self.logger.info("Using TriplaneLoss for LatentHead training")
     
     def _build_dataloaders(self):
         """Build data loaders using T-NeRF dataloader."""
@@ -420,38 +624,66 @@ class TNerfTrainer:
         self.logger.info(f"Val batches: {len(self.val_loader)}")
     
     def _save_checkpoint(self, epoch: int, is_best: bool = False):
-        """Save checkpoint."""
+        """Save checkpoint with head type information."""
         checkpoint = {
             "epoch": epoch,
             "global_step": self.global_step,
+            "head_type": self.args.head_type,  # Save which head was trained
             "model_state_dict": self.model.state_dict(),
             "optimizer_state_dict": self.optimizer.state_dict(),
             "scheduler_state_dict": self.scheduler.state_dict(),
+            "early_stopping_state_dict": self.early_stopping.state_dict(),
             "args": vars(self.args),
         }
         
-        path = os.path.join(self.args.checkpoint_dir, f"checkpoint_{epoch:04d}.pt")
+        # Use head_type in filename for clarity
+        path = os.path.join(self.args.checkpoint_dir, f"{self.args.head_type}_checkpoint_{epoch:04d}.pt")
         torch.save(checkpoint, path)
         
-        latest = os.path.join(self.args.checkpoint_dir, "checkpoint_latest.pt")
+        latest = os.path.join(self.args.checkpoint_dir, f"{self.args.head_type}_checkpoint_latest.pt")
         torch.save(checkpoint, latest)
         
         if is_best:
-            best = os.path.join(self.args.checkpoint_dir, "checkpoint_best.pt")
+            best = os.path.join(self.args.checkpoint_dir, f"{self.args.head_type}_checkpoint_best.pt")
             torch.save(checkpoint, best)
         
         self.logger.info(f"Saved checkpoint: {path}")
     
     def _load_checkpoint(self, path: str):
-        """Load checkpoint."""
+        """Load checkpoint and verify head type compatibility."""
         self.logger.info(f"Loading checkpoint: {path}")
         ckpt = torch.load(path, map_location=self.device)
         
-        self.model.load_state_dict(ckpt["model_state_dict"])
-        self.optimizer.load_state_dict(ckpt["optimizer_state_dict"])
-        self.scheduler.load_state_dict(ckpt["scheduler_state_dict"])
-        self.current_epoch = ckpt["epoch"]
-        self.global_step = ckpt["global_step"]
+        # Verify head type matches
+        saved_head_type = ckpt.get("head_type", "nlp")  # Default to nlp for old checkpoints
+        if saved_head_type != self.args.head_type:
+            self.logger.warning(
+                f"Checkpoint was trained with head_type='{saved_head_type}', "
+                f"but current training uses head_type='{self.args.head_type}'. "
+                f"Loading compatible weights only."
+            )
+        
+        # Load model state dict with strict=False to handle head type differences
+        missing, unexpected = self.model.load_state_dict(ckpt["model_state_dict"], strict=False)
+        if missing:
+            self.logger.info(f"Missing keys (expected for different head types): {len(missing)}")
+        if unexpected:
+            self.logger.info(f"Unexpected keys: {len(unexpected)}")
+        
+        # Only load optimizer/scheduler state if head types match
+        if saved_head_type == self.args.head_type:
+            self.optimizer.load_state_dict(ckpt["optimizer_state_dict"])
+            self.scheduler.load_state_dict(ckpt["scheduler_state_dict"])
+            
+            if "early_stopping_state_dict" in ckpt:
+                self.early_stopping.load_state_dict(ckpt["early_stopping_state_dict"])
+            
+            self.current_epoch = ckpt["epoch"] + 1  # Resume from next epoch
+            self.global_step = ckpt["global_step"]
+            self.logger.info(f"Resuming training from epoch {self.current_epoch}")
+        else:
+            # Different head type - start fresh training for the new head
+            self.logger.info("Different head type - starting fresh training with backbone weights loaded")
     
     def _move_to_device(self, batch: Dict) -> Dict:
         """Move batch to device."""
@@ -467,7 +699,7 @@ class TNerfTrainer:
     
     def _train_step(self, batch: Dict) -> Tuple[Dict[str, torch.Tensor], torch.Tensor, torch.Tensor]:
         """
-        Single training step.
+        Single training step. Supports both NLPHead and LatentHead.
         
         Args:
             batch: Dictionary from dataloader
@@ -480,12 +712,8 @@ class TNerfTrainer:
         # Get input images - all views are input (no separate target views)
         images = batch["images"]  # [B, num_views, 3, H, W]
         
-        # Forward through VGGT to get MLP parameters
+        # Forward through VGGT
         predictions = self.model(images)
-        mlp_params = predictions["nmlp"]  # [B, num_params]
-        
-        # Build batched MLP from predicted parameters
-        nerf_mlp = BatchedNeRFMLP(mlp_params)
         
         # Get voxel grids and bounding boxes
         rgbsigma_list = batch["rgbsigma"]  # List of [X, Y, Z, 4]
@@ -500,44 +728,95 @@ class TNerfTrainer:
         all_gt_rgb = []
         all_gt_sigma = []
         
-        for b in range(batch_size):
-            voxel = rgbsigma_list[b].to(self.device)
-            b_min = bbox_min[b]
-            b_max = bbox_max[b]
+        if self.args.head_type == "nlp":
+            # === NLPHead Training ===
+            mlp_params = predictions["nmlp"]  # [B, num_params]
             
-            # Sample points from voxel grid
-            points, gt_rgb, gt_sigma = self.point_sampler.sample_points(
-                voxel, b_min, b_max
+            for b in range(batch_size):
+                voxel = rgbsigma_list[b].to(self.device)
+                b_min = bbox_min[b]
+                b_max = bbox_max[b]
+                
+                # Sample points from voxel grid
+                points, gt_rgb, gt_sigma = self.point_sampler.sample_points(
+                    voxel, b_min, b_max
+                )
+                
+                # Normalize points to [-1, 1] for MLP query
+                points_normalized = (points - b_min) / (b_max - b_min) * 2 - 1
+                
+                # Query MLP at sampled points
+                points_query = points_normalized.unsqueeze(0)  # [1, N, 3]
+                
+                # Get the b-th MLP's output
+                single_mlp = BatchedNeRFMLP(mlp_params[b:b+1])
+                pred_output = single_mlp(points_query)  # [1, N, 4]
+                
+                pred_rgb_b = pred_output[0, :, :3]  # [N, 3]
+                pred_sigma_b = pred_output[0, :, 3]  # [N]
+                
+                all_pred_rgb.append(pred_rgb_b)
+                all_pred_sigma.append(pred_sigma_b)
+                all_gt_rgb.append(gt_rgb)
+                all_gt_sigma.append(gt_sigma)
+            
+            # Stack for loss computation
+            pred_rgb = torch.stack(all_pred_rgb, dim=0)    # [B, N, 3]
+            pred_sigma = torch.stack(all_pred_sigma, dim=0)  # [B, N]
+            gt_rgb = torch.stack(all_gt_rgb, dim=0)        # [B, N, 3]
+            gt_sigma = torch.stack(all_gt_sigma, dim=0)    # [B, N]
+            
+            # Compute NLP loss
+            loss_dict = self.loss_fn(pred_rgb, pred_sigma, gt_rgb, gt_sigma, mlp_params)
+            
+        else:
+            # === LatentHead Training ===
+            xy_plane = predictions["xy_plane"]  # [B, 32, 64, 64]
+            xz_plane = predictions["xz_plane"]  # [B, 32, 64, 64]
+            yz_plane = predictions["yz_plane"]  # [B, 32, 64, 64]
+            
+            for b in range(batch_size):
+                voxel = rgbsigma_list[b].to(self.device)
+                b_min = bbox_min[b]
+                b_max = bbox_max[b]
+                
+                # Sample points from voxel grid
+                points, gt_rgb, gt_sigma = self.point_sampler.sample_points(
+                    voxel, b_min, b_max
+                )
+                
+                # Normalize points to [-1, 1] for triplane query
+                points_normalized = (points - b_min) / (b_max - b_min) * 2 - 1
+                
+                # Generate random view directions (for training, we use random directions)
+                directions = torch.randn_like(points_normalized)
+                directions = F.normalize(directions, dim=-1)
+                
+                # Query triplane at sampled points using latent_head's query function
+                points_query = points_normalized.unsqueeze(0)  # [1, N, 3]
+                directions_query = directions.unsqueeze(0)  # [1, N, 3]
+                
+                pred_rgb_b, pred_sigma_b = self.model.latent_head.query_points(
+                    xy_plane[b:b+1], xz_plane[b:b+1], yz_plane[b:b+1],
+                    points_query, directions_query
+                )
+                
+                all_pred_rgb.append(pred_rgb_b[0])  # [N, 3]
+                all_pred_sigma.append(pred_sigma_b[0])  # [N]
+                all_gt_rgb.append(gt_rgb)
+                all_gt_sigma.append(gt_sigma)
+            
+            # Stack for loss computation
+            pred_rgb = torch.stack(all_pred_rgb, dim=0)    # [B, N, 3]
+            pred_sigma = torch.stack(all_pred_sigma, dim=0)  # [B, N]
+            gt_rgb = torch.stack(all_gt_rgb, dim=0)        # [B, N, 3]
+            gt_sigma = torch.stack(all_gt_sigma, dim=0)    # [B, N]
+            
+            # Compute Triplane loss with regularization
+            loss_dict = self.loss_fn(
+                pred_rgb, pred_sigma, gt_rgb, gt_sigma,
+                xy_plane, xz_plane, yz_plane
             )
-            
-            # Normalize points to [-1, 1] for MLP query
-            points_normalized = (points - b_min) / (b_max - b_min) * 2 - 1
-            
-            # Query MLP at sampled points
-            # BatchedNeRFMLP expects [B, N, 3] so we need to unsqueeze and select
-            points_query = points_normalized.unsqueeze(0)  # [1, N, 3]
-            
-            # Get the b-th MLP's output
-            # First, get single sample's MLP params
-            single_mlp = BatchedNeRFMLP(mlp_params[b:b+1])
-            pred_output = single_mlp(points_query)  # [1, N, 4]
-            
-            pred_rgb_b = pred_output[0, :, :3]  # [N, 3]
-            pred_sigma_b = pred_output[0, :, 3]  # [N]
-            
-            all_pred_rgb.append(pred_rgb_b)
-            all_pred_sigma.append(pred_sigma_b)
-            all_gt_rgb.append(gt_rgb)
-            all_gt_sigma.append(gt_sigma)
-        
-        # Stack for loss computation
-        pred_rgb = torch.stack(all_pred_rgb, dim=0)    # [B, N, 3]
-        pred_sigma = torch.stack(all_pred_sigma, dim=0)  # [B, N]
-        gt_rgb = torch.stack(all_gt_rgb, dim=0)        # [B, N, 3]
-        gt_sigma = torch.stack(all_gt_sigma, dim=0)    # [B, N]
-        
-        # Compute loss
-        loss_dict = self.loss_fn(pred_rgb, pred_sigma, gt_rgb, gt_sigma, mlp_params)
         
         return loss_dict, pred_rgb, gt_rgb
     
@@ -646,29 +925,58 @@ class TNerfTrainer:
             # Validate
             if len(self.val_loader) > 0:
                 val_losses = self.validate(epoch)
+                val_total_loss = val_losses.get('total_loss', float('inf'))
+                
                 self.logger.info(
                     f"Epoch {epoch} - Val: rgb={val_losses.get('rgb_loss', 0):.6f}, "
                     f"sigma={val_losses.get('sigma_loss', 0):.6f}, "
-                    f"total={val_losses.get('total_loss', 0):.6f}"
+                    f"total={val_total_loss:.6f}"
                 )
                 
                 for key, value in val_losses.items():
                     self.writer.add_scalar(f"epoch_val/{key}", value, epoch)
                 
-                is_best = val_losses.get("total_loss", float("inf")) < best_val_loss
+                # Check if best model
+                is_best = val_total_loss < best_val_loss
                 if is_best:
-                    best_val_loss = val_losses["total_loss"]
+                    best_val_loss = val_total_loss
+                
+                # Early stopping check
+                should_stop = self.early_stopping(val_total_loss, epoch)
+                
+                # Log early stopping metrics
+                self.writer.add_scalar("early_stopping/counter", self.early_stopping.counter, epoch)
+                self.writer.add_scalar("early_stopping/best_score", self.early_stopping.best_score, epoch)
+                
+                if should_stop:
+                    self.logger.info(
+                        f"Early stopping triggered at epoch {epoch}. "
+                        f"Best validation loss: {self.early_stopping.best_score:.6f} "
+                        f"at epoch {self.early_stopping.best_epoch}"
+                    )
+                    self._save_checkpoint(epoch, is_best)
+                    break
             else:
                 is_best = False
             
             # Update scheduler
             self.scheduler.step()
             
+            # Log learning rate
+            current_lr = self.optimizer.param_groups[0]['lr']
+            self.writer.add_scalar("learning_rate", current_lr, epoch)
+            self.logger.info(f"Learning rate: {current_lr:.2e}")
+            
             # Save checkpoint
             if (epoch + 1) % self.args.save_freq == 0 or is_best:
                 self._save_checkpoint(epoch, is_best)
         
         self.logger.info("Training completed!")
+        if self.early_stopping.best_score is not None:
+            self.logger.info(
+                f"Best validation loss: {self.early_stopping.best_score:.6f} "
+                f"at epoch {self.early_stopping.best_epoch}"
+            )
         self.writer.close()
 
 def main():

@@ -14,11 +14,13 @@ from ..heads.camera_head import CameraHead
 from ..heads.dpt_head import DPTHead
 from ..heads.track_head import TrackHead
 from ..heads.nlp_head import NLPHead
+from ..heads.latent_head import LatentHead
 
 
 class VGGT(nn.Module, PyTorchModelHubMixin):
     def __init__(self, img_size=518, patch_size=14, embed_dim=1024,
-                 enable_camera=False, enable_point=True, enable_depth=False, enable_track=False, enable_nlp=True):
+                 enable_camera=False, enable_point=True, enable_depth=False, 
+                 enable_track=False, enable_nlp=True, enable_latent=False):
         super().__init__()
 
         self.aggregator = Aggregator(img_size=img_size, patch_size=patch_size, embed_dim=embed_dim)
@@ -29,6 +31,7 @@ class VGGT(nn.Module, PyTorchModelHubMixin):
         self.track_head = TrackHead(dim_in=2 * embed_dim, patch_size=patch_size) if enable_track else None
         
         self.nmlp_head  = NLPHead(dim_in=2 * embed_dim) if enable_nlp else None
+        self.latent_head = LatentHead(dim_in=2 * embed_dim) if enable_latent else None
 
 
     def forward(self, images: torch.Tensor, query_points: torch.Tensor = None):
@@ -92,6 +95,14 @@ class VGGT(nn.Module, PyTorchModelHubMixin):
                     aggregated_tokens_list, images=images, patch_start_idx=patch_start_idx
                 )
                 predictions["nmlp"] = nmlp
+            
+            if self.latent_head is not None:
+                latent_output = self.latent_head(
+                    aggregated_tokens_list, images=images, patch_start_idx=patch_start_idx
+                )
+                predictions["xy_plane"] = latent_output["xy_plane"]
+                predictions["xz_plane"] = latent_output["xz_plane"]
+                predictions["yz_plane"] = latent_output["yz_plane"]
 
         if self.track_head is not None and query_points is not None:
             track_list, vis, conf = self.track_head(

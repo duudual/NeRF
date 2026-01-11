@@ -33,6 +33,7 @@ class DynamicVGGT:
         enable_depth: bool = True,
         enable_track: bool = False,
         enable_nlp: bool = True,
+        enable_latent: bool = False,
         model_path: str = '',
         img_size: int = 518,
         patch_size: int = 14,
@@ -47,6 +48,7 @@ class DynamicVGGT:
         self.enable_depth = enable_depth
         self.enable_track = enable_track
         self.enable_nlp = enable_nlp
+        self.enable_latent = enable_latent
         
         # Create model with specified heads
         self.model = TNeRFVGGT(
@@ -57,7 +59,8 @@ class DynamicVGGT:
             enable_point=enable_point,
             enable_depth=enable_depth,
             enable_track=enable_track,
-            enable_nlp=enable_nlp
+            enable_nlp=enable_nlp,
+            enable_latent=enable_latent
         )
         
         # Load pretrained weights if provided
@@ -121,6 +124,13 @@ class DynamicVGGT:
             if self.enable_nlp and self.model.nmlp_head is not None:
                 nmlp = self.model.nmlp_head(tokens_list, images=images, patch_start_idx=patch_start_idx)
                 preds["nmlp"] = nmlp
+            
+            # Latent head (Tri-plane representation)
+            if self.enable_latent and self.model.latent_head is not None:
+                latent_output = self.model.latent_head(tokens_list, images=images, patch_start_idx=patch_start_idx)
+                preds["xy_plane"] = latent_output["xy_plane"]
+                preds["xz_plane"] = latent_output["xz_plane"]
+                preds["yz_plane"] = latent_output["yz_plane"]
 
         return preds
 
@@ -254,10 +264,12 @@ def create_dynamic_vggt(
     
     Args:
         config: Predefined configuration name:
-            - "full": All heads enabled
+            - "full": All heads enabled (including latent)
             - "nerf": Only point + nlp heads for NeRF applications
+            - "nerf_latent": Point + latent heads for Tri-plane NeRF
             - "3d": Camera + point + depth heads for 3D reconstruction
             - "minimal": Only point head
+            - "latent": Only latent head for Tri-plane representation
         device: Device to use
         model_path: Path to pretrained model weights
         **kwargs: Additional arguments passed to DynamicVGGT
@@ -271,28 +283,48 @@ def create_dynamic_vggt(
             "enable_point": True,
             "enable_depth": True,
             "enable_track": False,
-            "enable_nlp": True
+            "enable_nlp": True,
+            "enable_latent": True
         },
         "nerf": {
             "enable_camera": False,
             "enable_point": True,
             "enable_depth": False,
             "enable_track": False,
-            "enable_nlp": True
+            "enable_nlp": True,
+            "enable_latent": False
+        },
+        "nerf_latent": {
+            "enable_camera": False,
+            "enable_point": True,
+            "enable_depth": False,
+            "enable_track": False,
+            "enable_nlp": False,
+            "enable_latent": True
         },
         "3d": {
             "enable_camera": True,
             "enable_point": True,
             "enable_depth": True,
             "enable_track": False,
-            "enable_nlp": False
+            "enable_nlp": False,
+            "enable_latent": False
         },
         "minimal": {
             "enable_camera": False,
             "enable_point": True,
             "enable_depth": False,
             "enable_track": False,
-            "enable_nlp": False
+            "enable_nlp": False,
+            "enable_latent": False
+        },
+        "latent": {
+            "enable_camera": False,
+            "enable_point": False,
+            "enable_depth": False,
+            "enable_track": False,
+            "enable_nlp": False,
+            "enable_latent": True
         }
     }
     
