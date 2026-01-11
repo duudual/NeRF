@@ -12,7 +12,7 @@ import torch
 
 import logging
 
-from vggt.utils.geometry import *
+from ...model.utils.geometry import *
 
 
 

@@ -34,8 +34,14 @@ Usage:
     python generate_data.py --input_dir ../data/nerf-mae --output_dir ../data/tnerf
     python generate_data.py --input_dir ../../NeRF-MAE_pretrain/NeRF-MAE/pretrain --output_dir ../data/tnerf
     python generate_data.py --input_dir E:/code/cv_finalproject/data/NeRF-MAE_pretrain --output_dir E:/code/cv_finalproject/data/tnerf --max_train 1000 --max_val 100 --max_test 100
+    python generate_data.py \
+    --input_dir "/media/fengwu/ZX1 1TB/code/cv_finalproject/data/NeRF-MAE_pretrain" \
+    --output_dir "/media/fengwu/ZX1 1TB/code/cv_finalproject/data/tnerf" \
+    --max_train 1000 \
+    --max_val 100 \
+    --max_test 100
 
-
+/media/fengwu/ZX1 1TB/code/cv_finalproject
 """
 
 import os

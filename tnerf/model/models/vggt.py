@@ -8,15 +8,12 @@ import torch
 import torch.nn as nn
 from huggingface_hub import PyTorchModelHubMixin  # used for model hub
 
-from vggt.models.aggregator import Aggregator
-from vggt.heads.camera_head import CameraHead
-from vggt.heads.dpt_head import DPTHead
-from vggt.heads.track_head import TrackHead
-
-try:  # Prefer VGGT repository version if available
-    from vggt.heads.nlp_head import NLPHead
-except ModuleNotFoundError:
-    from tnerf.model.heads.nlp_head import NLPHead
+# Use local tnerf modules
+from .aggregator import Aggregator
+from ..heads.camera_head import CameraHead
+from ..heads.dpt_head import DPTHead
+from ..heads.track_head import TrackHead
+from ..heads.nlp_head import NLPHead
 
 
 class VGGT(nn.Module, PyTorchModelHubMixin):

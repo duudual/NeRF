@@ -18,7 +18,7 @@ except AttributeError:
     lanczos = PIL.Image.LANCZOS
     bicubic = PIL.Image.BICUBIC
 
-from vggt.utils.geometry import closed_form_inverse_se3
+from ...model.utils.geometry import closed_form_inverse_se3
 
 
 

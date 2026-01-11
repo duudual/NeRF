@@ -16,7 +16,11 @@ Usage:
     python tnerf_training.py --data_dir /path/to/rendered_data --voxel_dir /path/to/features --pretrained_path /path/to/vggt.pt
     python tnerf_training.py --data_dir ../data/tnerf --voxel_dir ../data/nerf-mae/features --pretrained_path ../../../vggt/model_weights/model.pt
     python tnerf_training.py --data_dir E:/code/cv_finalproject/data/tnerf --voxel_dir E:/code/cv_finalproject/data/NeRF-MAE_pretrain/features --pretrained_path E:/code/cv_finalproject/vggt/model_weights/model.pt
-
+python tnerf_training.py \
+    --voxel_dir "/media/fengwu/ZX1 1TB/code/cv_finalproject/data/NeRF-MAE_pretrain/features" \
+    --data_dir "/media/fengwu/ZX1 1TB/code/cv_finalproject/data/tnerf" \
+    --pretrained_path "/media/fengwu/ZX1 1TB/code/cv_finalproject/vggt/model_weights/model.pt" \
+    --checkpoint_dir "/media/fengwu/ZX1 1TB/code/cv_finalproject/tnerf/checkpoints_tnerf" \
 """
 
 import os

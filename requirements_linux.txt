@@ -1,6 +1,6 @@
-# Core Deep Learning Framework
-torch>=2.0.0
-torchvision>=0.15.0
+# # Core Deep Learning Framework
+# torch>=2.0.0
+# torchvision>=0.15.0
 
 # Scientific Computing & Array Operations
 numpy>=2.0.0
@@ -41,3 +41,5 @@ tensorboard>=2.13.0
 jupyter>=1.0.0
 ipykernel>=6.20.0
 ipython>=8.10.0
+
+huggingface_hub==1.2.3
