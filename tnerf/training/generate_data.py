@@ -33,6 +33,7 @@ Usage:
     python generate_data.py --input_dir /path/to/pretrain --output_dir /path/to/rendered_data
     python generate_data.py --input_dir ../data/nerf-mae --output_dir ../data/tnerf
     python generate_data.py --input_dir ../../NeRF-MAE_pretrain/NeRF-MAE/pretrain --output_dir ../data/tnerf
+    python generate_data.py --input_dir E:/code/cv_finalproject/data/NeRF-MAE_pretrain --output_dir E:/code/cv_finalproject/data/tnerf --max_train 1000 --max_val 100 --max_test 100
 
 
 """
@@ -145,11 +146,136 @@ class VoxelRenderer:
         self, 
         bbox_min: torch.Tensor, 
         bbox_max: torch.Tensor,
+        rgbsigma: torch.Tensor,
         num_views: int = 8,
+        camera_height_ratio: float = 0.6,
+        min_distance: float = 0.3,
+    ) -> torch.Tensor:
+        """
+        Generate camera poses inside the scene for indoor scene reconstruction.
+        
+        Strategy for NeRF-friendly camera placement:
+        1. Place cameras at different positions inside the scene
+        2. Cameras look at various points covering the scene
+        3. Ensure good coverage while avoiding empty regions
+        4. Use realistic camera height (like human eye level)
+        
+        Args:
+            bbox_min: Minimum corner of bounding box [3]
+            bbox_max: Maximum corner of bounding box [3]
+            rgbsigma: Voxel grid [X, Y, Z, 4] for checking empty regions
+            num_views: Number of views to generate
+            camera_height_ratio: Height ratio within scene (0-1), 0.6 = 60% from bottom
+            min_distance: Minimum distance ratio between camera and look-at point
+            
+        Returns:
+            Camera poses [num_views, 4, 4]
+        """
+        center = (bbox_min + bbox_max) / 2
+        size = bbox_max - bbox_min
+        
+        # Get sigma grid to find valid (non-empty) regions
+        sigma_grid = rgbsigma[..., 3]
+        empty_value = -10000.0
+        valid_mask = sigma_grid != empty_value
+        
+        # Find valid voxel positions for camera placement
+        valid_indices = torch.nonzero(valid_mask, as_tuple=False).float()  # [N, 3]
+        
+        if valid_indices.shape[0] < 10:
+            # Fallback to center-based if not enough valid voxels
+            return self._generate_orbit_poses(bbox_min, bbox_max, num_views)
+        
+        # Convert voxel indices to world coordinates
+        grid_size = torch.tensor(sigma_grid.shape, dtype=torch.float32)
+        valid_world = bbox_min + (valid_indices / (grid_size - 1)) * size
+        
+        # Strategy: Generate viewing positions that cover the scene well
+        poses = []
+        
+        # Compute scene layout
+        x_min, y_min, z_min = bbox_min.tolist()
+        x_max, y_max, z_max = bbox_max.tolist()
+        
+        # Camera height: typically at human eye level (~1.6m from floor)
+        # Use ratio of scene height for flexibility
+        camera_z = z_min + size[2].item() * camera_height_ratio
+        
+        # Generate camera positions using different strategies
+        for i in range(num_views):
+            if i < num_views // 2:
+                # Strategy 1: Corner-based views looking towards center
+                # Place cameras near corners looking inward
+                corner_idx = i % 4
+                corners = [
+                    (x_min + size[0] * 0.2, y_min + size[1] * 0.2),  # Bottom-left
+                    (x_max - size[0] * 0.2, y_min + size[1] * 0.2),  # Bottom-right
+                    (x_max - size[0] * 0.2, y_max - size[1] * 0.2),  # Top-right
+                    (x_min + size[0] * 0.2, y_max - size[1] * 0.2),  # Top-left
+                ]
+                cam_x, cam_y = corners[corner_idx]
+                
+                # Look towards opposite side or center
+                look_corners = [
+                    (center[0].item() + size[0] * 0.2, center[1].item() + size[1] * 0.2),
+                    (center[0].item() - size[0] * 0.2, center[1].item() + size[1] * 0.2),
+                    (center[0].item() - size[0] * 0.2, center[1].item() - size[1] * 0.2),
+                    (center[0].item() + size[0] * 0.2, center[1].item() - size[1] * 0.2),
+                ]
+                look_x, look_y = look_corners[corner_idx]
+                look_z = camera_z - size[2].item() * 0.1  # Look slightly downward
+                
+            else:
+                # Strategy 2: Edge-based views for wall coverage
+                # Place cameras along edges looking at opposite walls
+                edge_idx = (i - num_views // 2) % 4
+                t = 0.3 + 0.4 * ((i - num_views // 2) // 4)  # Vary position along edge
+                
+                if edge_idx == 0:  # Left edge
+                    cam_x = x_min + size[0] * 0.15
+                    cam_y = y_min + size[1] * t
+                    look_x = x_max - size[0] * 0.15
+                    look_y = cam_y
+                elif edge_idx == 1:  # Right edge
+                    cam_x = x_max - size[0] * 0.15
+                    cam_y = y_min + size[1] * t
+                    look_x = x_min + size[0] * 0.15
+                    look_y = cam_y
+                elif edge_idx == 2:  # Bottom edge
+                    cam_x = x_min + size[0] * t
+                    cam_y = y_min + size[1] * 0.15
+                    look_x = cam_x
+                    look_y = y_max - size[1] * 0.15
+                else:  # Top edge
+                    cam_x = x_min + size[0] * t
+                    cam_y = y_max - size[1] * 0.15
+                    look_x = cam_x
+                    look_y = y_min + size[1] * 0.15
+                
+                look_z = camera_z
+            
+            cam_pos = torch.tensor([cam_x, cam_y, camera_z], dtype=torch.float32)
+            look_at = torch.tensor([look_x, look_y, look_z], dtype=torch.float32)
+            
+            # Add some randomness to avoid perfectly aligned views
+            cam_pos += torch.randn(3) * size * 0.02
+            look_at += torch.randn(3) * size * 0.02
+            
+            # Create camera pose
+            pose = self._look_at(cam_pos, look_at, torch.tensor([0, 0, 1], dtype=torch.float32))
+            poses.append(pose)
+        
+        return torch.stack(poses, dim=0)
+    
+    def _generate_orbit_poses(
+        self,
+        bbox_min: torch.Tensor,
+        bbox_max: torch.Tensor,
+        num_views: int,
         elevation_range: Tuple[float, float] = (30, 60),
     ) -> torch.Tensor:
         """
-        Generate camera poses looking at the scene center from different angles.
+        Fallback: Generate orbit camera poses around scene (for object-centric scenes).
         
         Args:
             bbox_min: Minimum corner of bounding box [3]
@@ -166,13 +292,10 @@ class VoxelRenderer:
         
         poses = []
         for i in range(num_views):
-            # Sample angles
-            theta = 2 * np.pi * i / num_views  # azimuth
-            # Vary elevation for diversity
+            theta = 2 * np.pi * i / num_views
             phi_deg = elevation_range[0] + (elevation_range[1] - elevation_range[0]) * (i % 3) / 2
-            phi = np.deg2rad(90 - phi_deg)  # Convert to radians from vertical
+            phi = np.deg2rad(90 - phi_deg)
             
-            # Camera position in spherical coordinates
             x = center[0].item() + radius.item() * np.cos(theta) * np.sin(phi)
             y = center[1].item() + radius.item() * np.sin(theta) * np.sin(phi)
             z = center[2].item() + radius.item() * np.cos(phi)
@@ -207,10 +330,17 @@ class VoxelRenderer:
         
         return pose
     
-    def get_intrinsics(self) -> torch.Tensor:
-        """Get camera intrinsic matrix."""
+    def get_intrinsics(self, fov_deg: float = 90.0) -> torch.Tensor:
+        """
+        Get camera intrinsic matrix.
+        
+        Args:
+            fov_deg: Field of view in degrees (default 90° for wide indoor coverage)
+        """
         H, W = self.image_size
-        focal = H  # Approximate focal length
+        # focal = H / (2 * tan(fov/2))
+        fov_rad = np.deg2rad(fov_deg)
+        focal = H / (2 * np.tan(fov_rad / 2))
         intrinsics = torch.tensor([
             [focal, 0, W / 2],
             [0, focal, H / 2],
@@ -520,7 +650,8 @@ def process_sample(
     bbox_min = torch.from_numpy(data['bbox_min']).float()
     bbox_max = torch.from_numpy(data['bbox_max']).float()
     
-    # Process sigma values
+    # Process sigma values - but keep original for camera pose generation
+    rgbsigma_original = rgbsigma.clone()
     rgbsigma[..., 3] = torch.clamp(rgbsigma[..., 3], min=0.0)
     rgbsigma[..., :3] = torch.clamp(rgbsigma[..., :3], 0.0, 1.0)
     
@@ -528,8 +659,8 @@ def process_sample(
     images_dir = output_dir / "images"
     images_dir.mkdir(parents=True, exist_ok=True)
     
-    # Generate camera poses
-    camera_poses = renderer.generate_camera_poses(bbox_min, bbox_max, num_views)
+    # Generate camera poses (use original rgbsigma to detect empty regions)
+    camera_poses = renderer.generate_camera_poses(bbox_min, bbox_max, rgbsigma_original, num_views)
     intrinsics = renderer.get_intrinsics()
     
     # Render views
@@ -632,8 +763,14 @@ def main():
                         help="Don't save voxel grid")
     parser.add_argument("--device", type=str, default="cuda",
                         help="Device to use for rendering")
-    parser.add_argument("--max_samples", type=int, default=None,
-                        help="Maximum number of samples to process per split (for testing)")
+    parser.add_argument("--max_samples", type=int, default=10,
+                        help="Maximum number of samples to process per split (default: 10, set to -1 for all samples)")
+    parser.add_argument("--max_train", type=int, default=None,
+                        help="Maximum number of train samples (overrides --max_samples for train)")
+    parser.add_argument("--max_val", type=int, default=None,
+                        help="Maximum number of val samples (overrides --max_samples for val)")
+    parser.add_argument("--max_test", type=int, default=None,
+                        help="Maximum number of test samples (overrides --max_samples for test)")
     parser.add_argument("--splits", type=str, nargs="+", default=["train", "val", "test"],
                         help="Which splits to process")
     
@@ -679,8 +816,18 @@ def main():
             continue
         
         npz_files = splits[split_name]
-        if args.max_samples:
-            npz_files = npz_files[:args.max_samples]
+        
+        # Determine max samples for this split
+        max_for_split = args.max_samples
+        if split_name == "train" and args.max_train is not None:
+            max_for_split = args.max_train
+        elif split_name == "val" and args.max_val is not None:
+            max_for_split = args.max_val
+        elif split_name == "test" and args.max_test is not None:
+            max_for_split = args.max_test
+        
+        if max_for_split and max_for_split > 0:
+            npz_files = npz_files[:max_for_split]
         
         print(f"\nProcessing {split_name} split: {len(npz_files)} samples")
         

@@ -95,3 +95,106 @@
 2026-01-10 11:34:49,181 - INFO - Starting training...
 2026-01-10 11:38:14,394 - INFO - Epoch 0 - Train: 0.397494
 2026-01-10 11:39:13,533 - INFO - Epoch 0 - Val: rgb=0.059663, sigma=2.609878, total=0.320651
+2026-01-10 13:29:16,894 - INFO - Device: cuda
+2026-01-10 13:29:16,894 - INFO - Args: {'data_dir': 'E:/code/cv_finalproject/data/tnerf', 'voxel_dir': 'E:/code/cv_finalproject/data/tnerf/features', 'pretrained_path': 'E:/code/cv_finalproject/vggt/model_weights/model.pt', 'checkpoint_dir': '../checkpoints_tnerf', 'resume': None, 'batch_size': 10, 'num_epochs': 5, 'lr': 0.0001, 'weight_decay': 1e-05, 'grad_clip': 1.0, 'image_size': 280, 'num_views': 5, 'min_views': 2, 'max_views': 5, 'num_sample_points': 4096, 'valid_point_ratio': 0.7, 'empty_value': -10000.0, 'freeze_backbone': True, 'freeze_other_heads': True, 'rgb_weight': 1.0, 'sigma_weight': 0.1, 'reg_weight': 0.001, 'log_dir': './logs_tnerf', 'log_freq': 50, 'save_freq': 5, 'vis_freq': 200, 'device': 'cuda', 'num_workers': 0}
+2026-01-10 13:29:16,894 - INFO - Building VGGT model...
+2026-01-10 13:29:16,902 - INFO - using MLP layer as FFN
+2026-01-10 13:29:21,374 - INFO - Loading pretrained weights from E:/code/cv_finalproject/vggt/model_weights/model.pt
+2026-01-10 13:31:26,812 - INFO - Missing: 64, Unexpected: 587
+2026-01-10 13:31:30,821 - INFO - Freezing backbone...
+2026-01-10 13:31:30,824 - INFO - Freezing other heads...
+2026-01-10 13:31:30,828 - INFO - Trainable: 37,815,637 / 946,927,957
+2026-01-10 13:31:30,830 - INFO - Loading data from E:/code/cv_finalproject/data/tnerf
+2026-01-10 13:31:30,830 - INFO - Voxel data from E:/code/cv_finalproject/data/tnerf/features
+2026-01-10 13:31:30,836 - INFO - Train batches: 5
+2026-01-10 13:31:30,836 - INFO - Val batches: 1
+2026-01-10 13:31:30,836 - INFO - Starting training...
+2026-01-10 13:39:27,437 - INFO - Device: cuda
+2026-01-10 13:39:27,437 - INFO - Args: {'data_dir': 'E:/code/cv_finalproject/data/tnerf', 'voxel_dir': 'E:/code/cv_finalproject/data/tnerf/features', 'pretrained_path': 'E:/code/cv_finalproject/vggt/model_weights/model.pt', 'checkpoint_dir': '../checkpoints_tnerf', 'resume': None, 'batch_size': 10, 'num_epochs': 5, 'lr': 0.0001, 'weight_decay': 1e-05, 'grad_clip': 1.0, 'image_size': 280, 'num_views': 5, 'min_views': 2, 'max_views': 5, 'num_sample_points': 4096, 'valid_point_ratio': 0.7, 'empty_value': -10000.0, 'freeze_backbone': True, 'freeze_other_heads': True, 'rgb_weight': 1.0, 'sigma_weight': 0.1, 'reg_weight': 0.001, 'log_dir': './logs_tnerf', 'log_freq': 50, 'save_freq': 5, 'vis_freq': 200, 'device': 'cuda', 'num_workers': 0}
+2026-01-10 13:39:27,437 - INFO - Building VGGT model...
+2026-01-10 13:39:27,445 - INFO - using MLP layer as FFN
+2026-01-10 13:39:34,009 - INFO - Loading pretrained weights from E:/code/cv_finalproject/vggt/model_weights/model.pt
+2026-01-10 13:41:33,790 - INFO - Missing: 64, Unexpected: 587
+2026-01-10 13:41:34,730 - INFO - Freezing backbone...
+2026-01-10 13:41:34,734 - INFO - Freezing other heads...
+2026-01-10 13:41:34,741 - INFO - Trainable: 37,815,637 / 946,927,957
+2026-01-10 13:41:34,741 - INFO - Loading data from E:/code/cv_finalproject/data/tnerf
+2026-01-10 13:41:34,742 - INFO - Voxel data from E:/code/cv_finalproject/data/tnerf/features
+2026-01-10 13:41:34,746 - INFO - Train batches: 5
+2026-01-10 13:41:34,746 - INFO - Val batches: 1
+2026-01-10 13:41:34,747 - INFO - Starting training...
+2026-01-10 14:28:25,410 - INFO - Device: cuda
+2026-01-10 14:28:25,410 - INFO - Args: {'data_dir': 'E:/code/cv_finalproject/data/tnerf', 'voxel_dir': 'E:/code/cv_finalproject/data/tnerf/features', 'pretrained_path': 'E:/code/cv_finalproject/vggt/model_weights/model.pt', 'checkpoint_dir': '../checkpoints_tnerf', 'resume': None, 'batch_size': 10, 'num_epochs': 5, 'lr': 0.0001, 'weight_decay': 1e-05, 'grad_clip': 1.0, 'image_size': 280, 'num_views': 5, 'min_views': 2, 'max_views': 5, 'num_sample_points': 4096, 'valid_point_ratio': 0.7, 'empty_value': -10000.0, 'freeze_backbone': True, 'freeze_other_heads': True, 'rgb_weight': 1.0, 'sigma_weight': 0.1, 'reg_weight': 0.001, 'log_dir': './logs_tnerf', 'log_freq': 50, 'save_freq': 5, 'vis_freq': 200, 'device': 'cuda', 'num_workers': 0}
+2026-01-10 14:28:25,413 - INFO - Building VGGT model...
+2026-01-10 14:28:25,421 - INFO - using MLP layer as FFN
+2026-01-10 14:28:32,738 - INFO - Loading pretrained weights from E:/code/cv_finalproject/vggt/model_weights/model.pt
+2026-01-10 14:28:48,699 - INFO - Missing: 64, Unexpected: 587
+2026-01-10 14:28:50,507 - INFO - Freezing backbone...
+2026-01-10 14:28:50,510 - INFO - Freezing other heads...
+2026-01-10 14:28:50,516 - INFO - Trainable: 37,815,637 / 946,927,957
+2026-01-10 14:28:50,517 - INFO - Loading data from E:/code/cv_finalproject/data/tnerf
+2026-01-10 14:28:50,517 - INFO - Voxel data from E:/code/cv_finalproject/data/tnerf/features
+2026-01-10 14:28:50,520 - INFO - Train batches: 5
+2026-01-10 14:28:50,520 - INFO - Val batches: 1
+2026-01-10 14:28:50,520 - INFO - Starting training...
+2026-01-10 14:30:16,589 - INFO - Device: cuda
+2026-01-10 14:30:16,591 - INFO - Args: {'data_dir': 'E:/code/cv_finalproject/data/tnerf', 'voxel_dir': 'E:/code/cv_finalproject/data/NeRF-MAE_pretrain/features', 'pretrained_path': 'E:/code/cv_finalproject/vggt/model_weights/model.pt', 'checkpoint_dir': '../checkpoints_tnerf', 'resume': None, 'batch_size': 10, 'num_epochs': 5, 'lr': 0.0001, 'weight_decay': 1e-05, 'grad_clip': 1.0, 'image_size': 280, 'num_views': 5, 'min_views': 2, 'max_views': 5, 'num_sample_points': 4096, 'valid_point_ratio': 0.7, 'empty_value': -10000.0, 'freeze_backbone': True, 'freeze_other_heads': True, 'rgb_weight': 1.0, 'sigma_weight': 0.1, 'reg_weight': 0.001, 'log_dir': './logs_tnerf', 'log_freq': 50, 'save_freq': 5, 'vis_freq': 200, 'device': 'cuda', 'num_workers': 0}
+2026-01-10 14:30:16,591 - INFO - Building VGGT model...
+2026-01-10 14:30:16,597 - INFO - using MLP layer as FFN
+2026-01-10 14:30:21,349 - INFO - Loading pretrained weights from E:/code/cv_finalproject/vggt/model_weights/model.pt
+2026-01-10 14:30:34,590 - INFO - Missing: 64, Unexpected: 587
+2026-01-10 14:30:35,958 - INFO - Freezing backbone...
+2026-01-10 14:30:35,961 - INFO - Freezing other heads...
+2026-01-10 14:30:35,966 - INFO - Trainable: 37,815,637 / 946,927,957
+2026-01-10 14:30:35,968 - INFO - Loading data from E:/code/cv_finalproject/data/tnerf
+2026-01-10 14:30:35,968 - INFO - Voxel data from E:/code/cv_finalproject/data/NeRF-MAE_pretrain/features
+2026-01-10 14:30:35,972 - INFO - Train batches: 5
+2026-01-10 14:30:35,973 - INFO - Val batches: 1
+2026-01-10 14:30:35,973 - INFO - Starting training...
+2026-01-10 15:18:35,241 - INFO - Epoch 0 - Train: 0.474567
+2026-01-10 15:20:08,546 - INFO - Epoch 0 - Val: rgb=0.138136, sigma=18.046164, total=1.942765
+2026-01-10 15:20:25,759 - INFO - Saved checkpoint: ../checkpoints_tnerf\checkpoint_0000.pt
+2026-01-10 15:22:53,387 - WARNING - Error in batch 0: CUDA error: out of memory
+Search for `cudaErrorMemoryAllocation' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+2026-01-10 15:22:54,874 - WARNING - Error in batch 1: CUDA error: out of memory
+Search for `cudaErrorMemoryAllocation' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+2026-01-10 15:22:56,847 - WARNING - Error in batch 2: CUDA error: out of memory
+Search for `cudaErrorMemoryAllocation' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+2026-01-10 15:22:58,430 - WARNING - Error in batch 3: CUDA error: out of memory
+Search for `cudaErrorMemoryAllocation' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+2026-01-10 15:22:59,844 - WARNING - Error in batch 4: CUDA error: out of memory
+Search for `cudaErrorMemoryAllocation' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+2026-01-10 15:22:59,852 - INFO - Epoch 1 - Train: 0.000000
+2026-01-10 15:23:00,465 - WARNING - Val error: CUDA error: out of memory
+Search for `cudaErrorMemoryAllocation' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+2026-01-10 15:23:00,465 - INFO - Epoch 1 - Val: rgb=0.000000, sigma=0.000000, total=0.000000
+2026-01-10 15:23:02,052 - WARNING - Error in batch 0: CUDA error: out of memory
+Search for `cudaErrorMemoryAllocation' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
