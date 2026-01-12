@@ -198,27 +198,174 @@ CUDA kernel errors might be asynchronously reported at some other API call, so t
 For debugging consider passing CUDA_LAUNCH_BLOCKING=1
 Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
 
-2026-01-11 23:57:35,952 - INFO - Device: cuda
-2026-01-11 23:57:35,953 - INFO - Args: {'data_dir': '../data/tnerf', 'voxel_dir': '../data/nerf-mae/features', 'pretrained_path': '../../../vggt/model_weights/model.pt', 'checkpoint_dir': '../checkpoints_tnerf', 'resume': None, 'head_type': 'latent', 'batch_size': 10, 'num_epochs': 5, 'lr': 0.0001, 'weight_decay': 1e-05, 'grad_clip': 1.0, 'image_size': 336, 'num_views': 5, 'min_views': 2, 'max_views': 5, 'num_sample_points': 4096, 'valid_point_ratio': 0.7, 'empty_value': -10000.0, 'freeze_backbone': True, 'freeze_other_heads': True, 'rgb_weight': 1.0, 'sigma_weight': 0.1, 'reg_weight': 0.001, 'tv_weight': 0.01, 'l1_weight': 0.001, 'log_dir': './logs_tnerf', 'log_freq': 50, 'save_freq': 5, 'vis_freq': 200, 'device': 'cuda', 'num_workers': 0, 'early_stop_patience': 10, 'early_stop_min_delta': 0.0001, 'warmup_epochs': 5, 'warmup_start_lr': 1e-06}
-2026-01-11 23:57:35,953 - INFO - Building VGGT model with latent head...
-2026-01-11 23:57:35,961 - INFO - using MLP layer as FFN
-2026-01-11 23:57:42,438 - INFO - Loading pretrained weights from ../../../vggt/model_weights/model.pt
-2026-01-11 23:57:45,975 - INFO - Missing: 68, Unexpected: 587
-2026-01-11 23:57:47,236 - INFO - Freezing backbone...
-2026-01-11 23:57:47,240 - INFO - Freezing other heads...
-2026-01-11 23:57:47,247 - INFO - Trainable: 231,534,020 / 1,140,646,340
-2026-01-11 23:57:47,248 - INFO - Scheduler: warmup_epochs=5, warmup_start_lr=1.00e-06
-2026-01-11 23:57:47,248 - INFO - Early stopping: patience=10, min_delta=0.0001
-2026-01-11 23:57:47,248 - INFO - Using TriplaneLoss for LatentHead training
-2026-01-11 23:57:47,249 - INFO - Loading data from ../data/tnerf
-2026-01-11 23:57:47,249 - INFO - Voxel data from ../data/nerf-mae/features
-2026-01-11 23:57:47,253 - INFO - Train batches: 1
-2026-01-11 23:57:47,253 - INFO - Val batches: 1
-2026-01-11 23:57:47,253 - INFO - Starting training...
-2026-01-12 00:04:05,669 - WARNING - Error in batch 0: CUDA error: out of memory
-Search for `cudaErrorMemoryAllocation' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
-CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
-For debugging consider passing CUDA_LAUNCH_BLOCKING=1
-Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
-
-2026-01-12 00:04:05,791 - INFO - Epoch 0 - Train: 0.000000
+2026-01-11 23:53:54,050 - INFO - Device: cuda
+2026-01-11 23:53:54,050 - INFO - Args: {'data_dir': '/media/fengwu/ZX1 1TB/code/cv_finalproject/data/tnerf', 'voxel_dir': '/media/fengwu/ZX1 1TB/code/cv_finalproject/data/NeRF-MAE_pretrain/features', 'pretrained_path': '/media/fengwu/ZX1 1TB/code/cv_finalproject/vggt/model_weights/model.pt', 'checkpoint_dir': '/media/fengwu/ZX1 1TB/code/cv_finalproject/tnerf/checkpoints_tnerf', 'resume': None, 'head_type': 'nlp', 'batch_size': 10, 'num_epochs': 100, 'lr': 0.0001, 'weight_decay': 1e-05, 'grad_clip': 1.0, 'image_size': 336, 'num_views': 5, 'min_views': 2, 'max_views': 5, 'num_sample_points': 4096, 'valid_point_ratio': 0.7, 'empty_value': -10000.0, 'freeze_backbone': True, 'freeze_other_heads': True, 'rgb_weight': 1.0, 'sigma_weight': 0.1, 'reg_weight': 0.001, 'tv_weight': 0.01, 'l1_weight': 0.001, 'log_dir': './logs_tnerf', 'log_freq': 50, 'save_freq': 5, 'vis_freq': 200, 'device': 'cuda', 'num_workers': 0, 'early_stop_patience': 10, 'early_stop_min_delta': 0.0001, 'warmup_epochs': 5, 'warmup_start_lr': 1e-06}
+2026-01-11 23:53:54,050 - INFO - Building VGGT model with nlp head...
+2026-01-11 23:53:54,058 - INFO - using MLP layer as FFN
+2026-01-11 23:54:00,942 - INFO - Loading pretrained weights from /media/fengwu/ZX1 1TB/code/cv_finalproject/vggt/model_weights/model.pt
+2026-01-11 23:54:12,840 - INFO - Missing: 64, Unexpected: 587
+2026-01-11 23:54:14,587 - INFO - Freezing backbone...
+2026-01-11 23:54:14,592 - INFO - Freezing other heads...
+2026-01-11 23:54:14,601 - INFO - Trainable: 37,815,637 / 946,927,957
+2026-01-11 23:54:14,602 - INFO - Scheduler: warmup_epochs=5, warmup_start_lr=1.00e-06
+2026-01-11 23:54:14,602 - INFO - Early stopping: patience=10, min_delta=0.0001
+2026-01-11 23:54:14,602 - INFO - Using TNerfLoss for NLPHead training
+2026-01-11 23:54:14,602 - INFO - Loading data from /media/fengwu/ZX1 1TB/code/cv_finalproject/data/tnerf
+2026-01-11 23:54:14,602 - INFO - Voxel data from /media/fengwu/ZX1 1TB/code/cv_finalproject/data/NeRF-MAE_pretrain/features
+2026-01-11 23:54:14,604 - INFO - Train batches: 160
+2026-01-11 23:54:14,604 - INFO - Val batches: 20
+2026-01-11 23:54:14,604 - INFO - Starting training...
+2026-01-12 00:11:59,411 - INFO - Epoch 0 - Train: 0.520825
+2026-01-12 00:14:54,090 - INFO - Epoch 0 - Val: rgb=0.119766, sigma=3.163017, total=0.436069
+2026-01-12 00:14:54,091 - INFO - Learning rate: 2.08e-05
+2026-01-12 00:15:08,304 - INFO - Saved checkpoint: /media/fengwu/ZX1 1TB/code/cv_finalproject/tnerf/checkpoints_tnerf/nlp_checkpoint_0000.pt
+2026-01-12 00:33:59,337 - INFO - Epoch 1 - Train: 0.810559
+2026-01-12 00:36:54,734 - INFO - Epoch 1 - Val: rgb=0.122368, sigma=2.641741, total=0.386546
+2026-01-12 00:36:54,735 - INFO - Learning rate: 4.06e-05
+2026-01-12 00:37:12,091 - INFO - Saved checkpoint: /media/fengwu/ZX1 1TB/code/cv_finalproject/tnerf/checkpoints_tnerf/nlp_checkpoint_0001.pt
+2026-01-12 00:55:49,670 - INFO - Epoch 2 - Train: 0.372293
+2026-01-12 00:58:44,315 - INFO - Epoch 2 - Val: rgb=0.119658, sigma=2.604936, total=0.380156
+2026-01-12 00:58:44,316 - INFO - Learning rate: 6.04e-05
+2026-01-12 00:59:00,167 - INFO - Saved checkpoint: /media/fengwu/ZX1 1TB/code/cv_finalproject/tnerf/checkpoints_tnerf/nlp_checkpoint_0002.pt
+2026-01-12 01:17:49,707 - INFO - Epoch 3 - Train: 0.367698
+2026-01-12 01:20:41,176 - INFO - Epoch 3 - Val: rgb=0.115811, sigma=2.613656, total=0.377182
+2026-01-12 01:20:41,177 - INFO - Learning rate: 8.02e-05
+2026-01-12 01:20:56,760 - INFO - Saved checkpoint: /media/fengwu/ZX1 1TB/code/cv_finalproject/tnerf/checkpoints_tnerf/nlp_checkpoint_0003.pt
+2026-01-12 01:40:20,010 - INFO - Epoch 4 - Train: 0.364378
+2026-01-12 01:43:13,022 - INFO - Epoch 4 - Val: rgb=0.084995, sigma=2.689613, total=0.353964
+2026-01-12 01:43:13,089 - INFO - Learning rate: 1.00e-04
+2026-01-12 01:43:28,227 - INFO - Saved checkpoint: /media/fengwu/ZX1 1TB/code/cv_finalproject/tnerf/checkpoints_tnerf/nlp_checkpoint_0004.pt
+2026-01-12 02:01:47,145 - INFO - Epoch 5 - Train: 0.347362
+2026-01-12 02:04:41,539 - INFO - Epoch 5 - Val: rgb=0.081216, sigma=2.584270, total=0.339652
+2026-01-12 02:04:41,540 - INFO - Learning rate: 1.00e-04
+2026-01-12 02:04:56,338 - INFO - Saved checkpoint: /media/fengwu/ZX1 1TB/code/cv_finalproject/tnerf/checkpoints_tnerf/nlp_checkpoint_0005.pt
+2026-01-12 02:23:23,946 - INFO - Epoch 6 - Train: 0.337932
+2026-01-12 02:26:17,573 - INFO - Epoch 6 - Val: rgb=0.075667, sigma=2.644861, total=0.340165
+2026-01-12 02:26:17,574 - INFO - Learning rate: 9.99e-05
+2026-01-12 02:44:23,714 - INFO - Epoch 7 - Train: 0.334822
+2026-01-12 02:47:15,881 - INFO - Epoch 7 - Val: rgb=0.073672, sigma=2.569177, total=0.330602
+2026-01-12 02:47:15,881 - INFO - Learning rate: 9.98e-05
+2026-01-12 02:47:30,818 - INFO - Saved checkpoint: /media/fengwu/ZX1 1TB/code/cv_finalproject/tnerf/checkpoints_tnerf/nlp_checkpoint_0007.pt
+2026-01-12 03:05:39,126 - INFO - Epoch 8 - Train: 0.330812
+2026-01-12 03:08:30,849 - INFO - Epoch 8 - Val: rgb=0.075487, sigma=2.554029, total=0.330902
+2026-01-12 03:08:30,850 - INFO - Learning rate: 9.96e-05
+2026-01-12 03:26:24,865 - INFO - Epoch 9 - Train: 0.327281
+2026-01-12 03:29:17,039 - INFO - Epoch 9 - Val: rgb=0.071732, sigma=2.550658, total=0.326813
+2026-01-12 03:29:17,039 - INFO - Learning rate: 9.93e-05
+2026-01-12 03:29:31,729 - INFO - Saved checkpoint: /media/fengwu/ZX1 1TB/code/cv_finalproject/tnerf/checkpoints_tnerf/nlp_checkpoint_0009.pt
+2026-01-12 03:47:44,617 - INFO - Epoch 10 - Train: 0.325740
+2026-01-12 03:50:35,791 - INFO - Epoch 10 - Val: rgb=0.072558, sigma=2.537745, total=0.326345
+2026-01-12 03:50:35,792 - INFO - Learning rate: 9.90e-05
+2026-01-12 03:50:53,482 - INFO - Saved checkpoint: /media/fengwu/ZX1 1TB/code/cv_finalproject/tnerf/checkpoints_tnerf/nlp_checkpoint_0010.pt
+2026-01-12 04:09:44,595 - INFO - Epoch 11 - Train: 0.322632
+2026-01-12 04:12:36,901 - INFO - Epoch 11 - Val: rgb=0.070722, sigma=2.547555, total=0.325492
+2026-01-12 04:12:36,910 - INFO - Learning rate: 9.87e-05
+2026-01-12 04:12:54,450 - INFO - Saved checkpoint: /media/fengwu/ZX1 1TB/code/cv_finalproject/tnerf/checkpoints_tnerf/nlp_checkpoint_0011.pt
+2026-01-12 04:31:03,147 - INFO - Epoch 12 - Train: 0.321146
+2026-01-12 04:33:57,669 - INFO - Epoch 12 - Val: rgb=0.074164, sigma=2.507224, total=0.324899
+2026-01-12 04:33:57,669 - INFO - Learning rate: 9.83e-05
+2026-01-12 04:34:14,413 - INFO - Saved checkpoint: /media/fengwu/ZX1 1TB/code/cv_finalproject/tnerf/checkpoints_tnerf/nlp_checkpoint_0012.pt
+2026-01-12 04:52:52,459 - INFO - Epoch 13 - Train: 0.321099
+2026-01-12 04:55:44,051 - INFO - Epoch 13 - Val: rgb=0.069973, sigma=2.519244, total=0.321911
+2026-01-12 04:55:44,052 - INFO - Learning rate: 9.78e-05
+2026-01-12 04:56:00,917 - INFO - Saved checkpoint: /media/fengwu/ZX1 1TB/code/cv_finalproject/tnerf/checkpoints_tnerf/nlp_checkpoint_0013.pt
+2026-01-12 05:14:37,219 - INFO - Epoch 14 - Train: 0.321615
+2026-01-12 05:17:30,799 - INFO - Epoch 14 - Val: rgb=0.071946, sigma=2.540911, total=0.326050
+2026-01-12 05:17:30,799 - INFO - Learning rate: 9.73e-05
+2026-01-12 05:17:41,826 - INFO - Saved checkpoint: /media/fengwu/ZX1 1TB/code/cv_finalproject/tnerf/checkpoints_tnerf/nlp_checkpoint_0014.pt
+2026-01-12 05:36:22,788 - INFO - Epoch 15 - Train: 0.318462
+2026-01-12 05:39:15,047 - INFO - Epoch 15 - Val: rgb=0.067799, sigma=2.536413, total=0.321454
+2026-01-12 05:39:15,047 - INFO - Learning rate: 9.68e-05
+2026-01-12 05:39:31,072 - INFO - Saved checkpoint: /media/fengwu/ZX1 1TB/code/cv_finalproject/tnerf/checkpoints_tnerf/nlp_checkpoint_0015.pt
+2026-01-12 05:57:51,061 - INFO - Epoch 16 - Train: 0.317620
+2026-01-12 06:00:43,845 - INFO - Epoch 16 - Val: rgb=0.070101, sigma=2.491937, total=0.319312
+2026-01-12 06:00:43,846 - INFO - Learning rate: 9.62e-05
+2026-01-12 06:01:00,409 - INFO - Saved checkpoint: /media/fengwu/ZX1 1TB/code/cv_finalproject/tnerf/checkpoints_tnerf/nlp_checkpoint_0016.pt
+2026-01-12 06:18:54,511 - INFO - Epoch 17 - Train: 0.314760
+2026-01-12 06:21:45,631 - INFO - Epoch 17 - Val: rgb=0.068733, sigma=2.500703, total=0.318817
+2026-01-12 06:21:45,632 - INFO - Learning rate: 9.55e-05
+2026-01-12 06:22:02,052 - INFO - Saved checkpoint: /media/fengwu/ZX1 1TB/code/cv_finalproject/tnerf/checkpoints_tnerf/nlp_checkpoint_0017.pt
+2026-01-12 06:40:03,642 - INFO - Epoch 18 - Train: 0.315634
+2026-01-12 06:42:55,813 - INFO - Epoch 18 - Val: rgb=0.077582, sigma=2.525460, total=0.330142
+2026-01-12 06:42:55,813 - INFO - Learning rate: 9.48e-05
+2026-01-12 07:01:39,048 - INFO - Epoch 19 - Train: 0.312632
+2026-01-12 07:04:31,822 - INFO - Epoch 19 - Val: rgb=0.067604, sigma=2.483379, total=0.315957
+2026-01-12 07:04:31,823 - INFO - Learning rate: 9.40e-05
+2026-01-12 07:04:49,142 - INFO - Saved checkpoint: /media/fengwu/ZX1 1TB/code/cv_finalproject/tnerf/checkpoints_tnerf/nlp_checkpoint_0019.pt
+2026-01-12 07:22:46,562 - INFO - Epoch 20 - Train: 0.311072
+2026-01-12 07:25:38,541 - INFO - Epoch 20 - Val: rgb=0.071650, sigma=2.482396, total=0.319906
+2026-01-12 07:25:38,542 - INFO - Learning rate: 9.32e-05
+2026-01-12 07:44:25,208 - INFO - Epoch 21 - Train: 0.312835
+2026-01-12 07:47:18,397 - INFO - Epoch 21 - Val: rgb=0.070048, sigma=2.486953, total=0.318759
+2026-01-12 07:47:18,397 - INFO - Learning rate: 9.24e-05
+2026-01-12 08:05:42,644 - INFO - Epoch 22 - Train: 0.311777
+2026-01-12 08:08:33,873 - INFO - Epoch 22 - Val: rgb=0.066518, sigma=2.492564, total=0.315792
+2026-01-12 08:08:33,873 - INFO - Learning rate: 9.15e-05
+2026-01-12 08:08:50,200 - INFO - Saved checkpoint: /media/fengwu/ZX1 1TB/code/cv_finalproject/tnerf/checkpoints_tnerf/nlp_checkpoint_0022.pt
+2026-01-12 08:27:00,852 - INFO - Epoch 23 - Train: 0.309710
+2026-01-12 08:29:52,303 - INFO - Epoch 23 - Val: rgb=0.066731, sigma=2.496749, total=0.316422
+2026-01-12 08:29:52,304 - INFO - Learning rate: 9.05e-05
+2026-01-12 08:48:12,276 - INFO - Epoch 24 - Train: 0.307824
+2026-01-12 08:51:04,398 - INFO - Epoch 24 - Val: rgb=0.068912, sigma=2.468369, total=0.315766
+2026-01-12 08:51:04,398 - INFO - Learning rate: 8.96e-05
+2026-01-12 08:51:20,669 - INFO - Saved checkpoint: /media/fengwu/ZX1 1TB/code/cv_finalproject/tnerf/checkpoints_tnerf/nlp_checkpoint_0024.pt
+2026-01-12 09:09:50,177 - INFO - Epoch 25 - Train: 0.307493
+2026-01-12 09:12:41,930 - INFO - Epoch 25 - Val: rgb=0.067385, sigma=2.484671, total=0.315868
+2026-01-12 09:12:41,930 - INFO - Learning rate: 8.85e-05
+2026-01-12 09:31:15,113 - INFO - Epoch 26 - Train: 0.307476
+2026-01-12 09:34:07,231 - INFO - Epoch 26 - Val: rgb=0.066323, sigma=2.472200, total=0.313560
+2026-01-12 09:34:07,232 - INFO - Learning rate: 8.75e-05
+2026-01-12 09:34:23,388 - INFO - Saved checkpoint: /media/fengwu/ZX1 1TB/code/cv_finalproject/tnerf/checkpoints_tnerf/nlp_checkpoint_0026.pt
+2026-01-12 09:52:44,721 - INFO - Epoch 27 - Train: 0.307311
+2026-01-12 09:55:36,101 - INFO - Epoch 27 - Val: rgb=0.069037, sigma=2.513548, total=0.320410
+2026-01-12 09:55:36,102 - INFO - Learning rate: 8.64e-05
+2026-01-12 10:13:57,117 - INFO - Epoch 28 - Train: 0.306077
+2026-01-12 10:16:49,100 - INFO - Epoch 28 - Val: rgb=0.066749, sigma=2.462174, total=0.312983
+2026-01-12 10:16:49,100 - INFO - Learning rate: 8.52e-05
+2026-01-12 10:17:05,000 - INFO - Saved checkpoint: /media/fengwu/ZX1 1TB/code/cv_finalproject/tnerf/checkpoints_tnerf/nlp_checkpoint_0028.pt
+2026-01-12 10:34:39,822 - INFO - Epoch 29 - Train: 0.304970
+2026-01-12 10:37:14,871 - INFO - Epoch 29 - Val: rgb=0.067802, sigma=2.492741, total=0.317093
+2026-01-12 10:37:14,872 - INFO - Learning rate: 8.40e-05
+2026-01-12 10:37:25,539 - INFO - Saved checkpoint: /media/fengwu/ZX1 1TB/code/cv_finalproject/tnerf/checkpoints_tnerf/nlp_checkpoint_0029.pt
+2026-01-12 10:48:02,581 - INFO - Device: cuda
+2026-01-12 10:48:02,581 - INFO - Args: {'data_dir': '/media/fengwu/ZX1 1TB/code/cv_finalproject/data/tnerf', 'voxel_dir': '/media/fengwu/ZX1 1TB/code/cv_finalproject/data/NeRF-MAE_pretrain/features', 'pretrained_path': '/media/fengwu/ZX1 1TB/code/cv_finalproject/vggt/model_weights/model.pt', 'checkpoint_dir': '/media/fengwu/ZX1 1TB/code/cv_finalproject/tnerf/checkpoints_tnerf', 'resume': None, 'head_type': 'latent', 'batch_size': 10, 'num_epochs': 100, 'lr': 0.0001, 'weight_decay': 1e-05, 'grad_clip': 1.0, 'image_size': 336, 'num_views': 5, 'min_views': 2, 'max_views': 5, 'num_sample_points': 4096, 'valid_point_ratio': 0.7, 'empty_value': -10000.0, 'freeze_backbone': True, 'freeze_other_heads': True, 'rgb_weight': 1.0, 'sigma_weight': 0.1, 'reg_weight': 0.001, 'tv_weight': 0.01, 'l1_weight': 0.001, 'log_dir': './logs_tnerf', 'log_freq': 50, 'save_freq': 5, 'vis_freq': 200, 'device': 'cuda', 'num_workers': 0, 'early_stop_patience': 10, 'early_stop_min_delta': 0.0001, 'warmup_epochs': 5, 'warmup_start_lr': 1e-06}
+2026-01-12 10:48:02,581 - INFO - Building VGGT model with latent head...
+2026-01-12 10:48:02,591 - INFO - using MLP layer as FFN
+2026-01-12 10:48:11,577 - INFO - Loading pretrained weights from /media/fengwu/ZX1 1TB/code/cv_finalproject/vggt/model_weights/model.pt
+2026-01-12 10:48:24,798 - INFO - Missing: 68, Unexpected: 587
+2026-01-12 10:48:26,817 - INFO - Freezing backbone...
+2026-01-12 10:48:26,820 - INFO - Freezing other heads...
+2026-01-12 10:48:26,824 - INFO - Trainable: 231,534,020 / 1,140,646,340
+2026-01-12 10:48:26,825 - INFO - Scheduler: warmup_epochs=5, warmup_start_lr=1.00e-06
+2026-01-12 10:48:26,825 - INFO - Early stopping: patience=10, min_delta=0.0001
+2026-01-12 10:48:26,825 - INFO - Using TriplaneLoss for LatentHead training
+2026-01-12 10:48:26,825 - INFO - Loading data from /media/fengwu/ZX1 1TB/code/cv_finalproject/data/tnerf
+2026-01-12 10:48:26,825 - INFO - Voxel data from /media/fengwu/ZX1 1TB/code/cv_finalproject/data/NeRF-MAE_pretrain/features
+2026-01-12 10:48:26,830 - INFO - Train batches: 160
+2026-01-12 10:48:26,830 - INFO - Val batches: 20
+2026-01-12 10:48:26,830 - INFO - Starting training...
+2026-01-12 10:48:36,738 - WARNING - Error in batch 0: The size of tensor a (3) must match the size of tensor b (4096) at non-singleton dimension 2
+2026-01-12 10:48:43,531 - WARNING - Error in batch 1: The size of tensor a (3) must match the size of tensor b (4096) at non-singleton dimension 2
+2026-01-12 10:48:50,167 - WARNING - Error in batch 2: The size of tensor a (3) must match the size of tensor b (4096) at non-singleton dimension 2
+2026-01-12 10:48:54,743 - WARNING - Error in batch 3: The size of tensor a (3) must match the size of tensor b (4096) at non-singleton dimension 2
+2026-01-12 10:49:00,862 - WARNING - Error in batch 4: The size of tensor a (3) must match the size of tensor b (4096) at non-singleton dimension 2
+2026-01-12 10:49:07,315 - WARNING - Error in batch 5: The size of tensor a (3) must match the size of tensor b (4096) at non-singleton dimension 2
+2026-01-12 10:49:14,887 - WARNING - Error in batch 6: The size of tensor a (3) must match the size of tensor b (4096) at non-singleton dimension 2
+2026-01-12 10:49:22,769 - WARNING - Error in batch 7: The size of tensor a (3) must match the size of tensor b (4096) at non-singleton dimension 2
+2026-01-12 10:49:28,283 - WARNING - Error in batch 8: The size of tensor a (3) must match the size of tensor b (4096) at non-singleton dimension 2
+2026-01-12 10:49:32,421 - WARNING - Error in batch 9: The size of tensor a (3) must match the size of tensor b (4096) at non-singleton dimension 2
+2026-01-12 10:49:36,640 - WARNING - Error in batch 10: The size of tensor a (3) must match the size of tensor b (4096) at non-singleton dimension 2
+2026-01-12 10:49:44,275 - WARNING - Error in batch 11: The size of tensor a (3) must match the size of tensor b (4096) at non-singleton dimension 2
+2026-01-12 10:49:49,873 - WARNING - Error in batch 12: The size of tensor a (3) must match the size of tensor b (4096) at non-singleton dimension 2
+2026-01-12 10:49:55,262 - WARNING - Error in batch 13: The size of tensor a (3) must match the size of tensor b (4096) at non-singleton dimension 2
+2026-01-12 10:49:59,017 - WARNING - Error in batch 14: The size of tensor a (3) must match the size of tensor b (4096) at non-singleton dimension 2
+2026-01-12 10:50:04,135 - WARNING - Error in batch 15: The size of tensor a (3) must match the size of tensor b (4096) at non-singleton dimension 2
+2026-01-12 10:50:07,991 - WARNING - Error in batch 16: The size of tensor a (3) must match the size of tensor b (4096) at non-singleton dimension 2
+2026-01-12 10:50:13,399 - WARNING - Error in batch 17: The size of tensor a (3) must match the size of tensor b (4096) at non-singleton dimension 2
+2026-01-12 10:50:18,538 - WARNING - Error in batch 18: The size of tensor a (3) must match the size of tensor b (4096) at non-singleton dimension 2
+2026-01-12 10:50:22,974 - WARNING - Error in batch 19: The size of tensor a (3) must match the size of tensor b (4096) at non-singleton dimension 2
+2026-01-12 10:50:27,189 - WARNING - Error in batch 20: The size of tensor a (3) must match the size of tensor b (4096) at non-singleton dimension 2
+2026-01-12 10:50:34,261 - WARNING - Error in batch 21: The size of tensor a (3) must match the size of tensor b (4096) at non-singleton dimension 2
+2026-01-12 10:50:40,677 - WARNING - Error in batch 22: The size of tensor a (3) must match the size of tensor b (4096) at non-singleton dimension 2
+2026-01-12 10:50:46,225 - WARNING - Error in batch 23: The size of tensor a (3) must match the size of tensor b (4096) at non-singleton dimension 2
+2026-01-12 10:50:52,521 - WARNING - Error in batch 24: The size of tensor a (3) must match the size of tensor b (4096) at non-singleton dimension 2
