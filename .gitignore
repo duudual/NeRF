@@ -3,4 +3,3 @@ data/raw_nerf/*
 tnerf/data/tnerf/*
 *.npz
 *.pt
-events.*
