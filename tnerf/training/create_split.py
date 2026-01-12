@@ -7,6 +7,7 @@ For 2000 total samples: 1600 train, 200 val, 200 test.
 Usage:
     python create_split.py --data_dir /path/to/tnerf/data
     python create_split.py --data_dir /path/to/tnerf/data --train_ratio 0.8 --val_ratio 0.1 --test_ratio 0.1
+    python create_split.py --data_dir "/media/fengwu/ZX1 1TB/code/cv_finalproject/data/tnerf" --train_ratio 0.8 --val_ratio 0.1 --test_ratio 0.1
 """
 
 import os

@@ -198,3 +198,27 @@ CUDA kernel errors might be asynchronously reported at some other API call, so t
 For debugging consider passing CUDA_LAUNCH_BLOCKING=1
 Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
 
+2026-01-11 23:57:35,952 - INFO - Device: cuda
+2026-01-11 23:57:35,953 - INFO - Args: {'data_dir': '../data/tnerf', 'voxel_dir': '../data/nerf-mae/features', 'pretrained_path': '../../../vggt/model_weights/model.pt', 'checkpoint_dir': '../checkpoints_tnerf', 'resume': None, 'head_type': 'latent', 'batch_size': 10, 'num_epochs': 5, 'lr': 0.0001, 'weight_decay': 1e-05, 'grad_clip': 1.0, 'image_size': 336, 'num_views': 5, 'min_views': 2, 'max_views': 5, 'num_sample_points': 4096, 'valid_point_ratio': 0.7, 'empty_value': -10000.0, 'freeze_backbone': True, 'freeze_other_heads': True, 'rgb_weight': 1.0, 'sigma_weight': 0.1, 'reg_weight': 0.001, 'tv_weight': 0.01, 'l1_weight': 0.001, 'log_dir': './logs_tnerf', 'log_freq': 50, 'save_freq': 5, 'vis_freq': 200, 'device': 'cuda', 'num_workers': 0, 'early_stop_patience': 10, 'early_stop_min_delta': 0.0001, 'warmup_epochs': 5, 'warmup_start_lr': 1e-06}
+2026-01-11 23:57:35,953 - INFO - Building VGGT model with latent head...
+2026-01-11 23:57:35,961 - INFO - using MLP layer as FFN
+2026-01-11 23:57:42,438 - INFO - Loading pretrained weights from ../../../vggt/model_weights/model.pt
+2026-01-11 23:57:45,975 - INFO - Missing: 68, Unexpected: 587
+2026-01-11 23:57:47,236 - INFO - Freezing backbone...
+2026-01-11 23:57:47,240 - INFO - Freezing other heads...
+2026-01-11 23:57:47,247 - INFO - Trainable: 231,534,020 / 1,140,646,340
+2026-01-11 23:57:47,248 - INFO - Scheduler: warmup_epochs=5, warmup_start_lr=1.00e-06
+2026-01-11 23:57:47,248 - INFO - Early stopping: patience=10, min_delta=0.0001
+2026-01-11 23:57:47,248 - INFO - Using TriplaneLoss for LatentHead training
+2026-01-11 23:57:47,249 - INFO - Loading data from ../data/tnerf
+2026-01-11 23:57:47,249 - INFO - Voxel data from ../data/nerf-mae/features
+2026-01-11 23:57:47,253 - INFO - Train batches: 1
+2026-01-11 23:57:47,253 - INFO - Val batches: 1
+2026-01-11 23:57:47,253 - INFO - Starting training...
+2026-01-12 00:04:05,669 - WARNING - Error in batch 0: CUDA error: out of memory
+Search for `cudaErrorMemoryAllocation' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+2026-01-12 00:04:05,791 - INFO - Epoch 0 - Train: 0.000000

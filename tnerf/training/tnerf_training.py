@@ -21,8 +21,9 @@ Usage:
     --data_dir "/media/fengwu/ZX1 1TB/code/cv_finalproject/data/tnerf" \
     --pretrained_path "/media/fengwu/ZX1 1TB/code/cv_finalproject/vggt/model_weights/model.pt" \
     --checkpoint_dir "/media/fengwu/ZX1 1TB/code/cv_finalproject/tnerf/checkpoints_tnerf" \
-    --num_epochs 200 \
+    --num_epochs 100 \
     
+    # 从checkpoint继续训练
     python tnerf_training.py \
     --data_dir /path/to/tnerf/data \
     --voxel_dir /path/to/features \
@@ -30,6 +31,9 @@ Usage:
     --resume /path/to/checkpoints/nlp_checkpoint_latest.pt \
     --num_epochs 100
         
+    
+    # latent head训练
+    python tnerf_training.py --head_type latent --data_dir ../data/tnerf --voxel_dir ../data/nerf-mae/features --pretrained_path ../../../vggt/model_weights/model.pt
 """
 
 import os
@@ -796,13 +800,14 @@ class TNerfTrainer:
                 points_query = points_normalized.unsqueeze(0)  # [1, N, 3]
                 directions_query = directions.unsqueeze(0)  # [1, N, 3]
                 
-                pred_rgb_b, pred_sigma_b = self.model.latent_head.query_points(
+                # Latent head returns (sigma, rgb)
+                pred_sigma_b, pred_rgb_b = self.model.latent_head.query_points(
                     xy_plane[b:b+1], xz_plane[b:b+1], yz_plane[b:b+1],
                     points_query, directions_query
                 )
                 
                 all_pred_rgb.append(pred_rgb_b[0])  # [N, 3]
-                all_pred_sigma.append(pred_sigma_b[0])  # [N]
+                all_pred_sigma.append(pred_sigma_b[0, :, 0])  # [N]
                 all_gt_rgb.append(gt_rgb)
                 all_gt_sigma.append(gt_sigma)
             
