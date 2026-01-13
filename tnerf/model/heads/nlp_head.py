@@ -62,7 +62,8 @@ class NeRFMLP(nn.Module):
             color: RGB color, shape [..., 3]
         """
         h = F.relu(self.pos_linear(pos_encoded))
-        sigma = self.sigma_linear(h)
+        # Apply softplus to ensure non-negative sigma, with scaling for typical NeRF range
+        sigma = F.softplus(self.sigma_linear(h)) * 10.0
         
         # Concatenate hidden features with direction encoding for color prediction
         h_with_dir = torch.cat([h, dir_encoded], dim=-1)

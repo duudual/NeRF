@@ -12,12 +12,14 @@ class TNerfLoss(nn.Module):
     1. RGB loss at sampled points
     2. Sigma (density) loss at sampled points
     3. Parameter regularization loss
+    
+    Note: sigma_weight increased to 1.0 (was 0.1) to ensure proper density learning.
     """
     
     def __init__(
         self,
         rgb_weight: float = 1.0,
-        sigma_weight: float = 0.1,
+        sigma_weight: float = 1.0,  # Increased from 0.1 to balance with RGB loss
         reg_weight: float = 0.001,
     ):
         super().__init__()
@@ -78,12 +80,14 @@ class TriplaneLoss(nn.Module):
     1. RGB loss at sampled points
     2. Sigma (density) loss at sampled points
     3. Tri-plane regularization (TV + L1 sparsity)
+    
+    Note: sigma_weight increased to 1.0 (was 0.1) to ensure proper density learning.
     """
     
     def __init__(
         self,
         rgb_weight: float = 1.0,
-        sigma_weight: float = 0.1,
+        sigma_weight: float = 1.0,  # Increased from 0.1 to balance with RGB loss
         tv_weight: float = 0.01,
         l1_weight: float = 0.001,
         perceptual_weight: float = 0.0,

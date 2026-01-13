@@ -295,6 +295,18 @@ class PointSampler:
         gt_rgb = sampled_values[:3].T  # [N, 3]
         gt_sigma = sampled_values[3]   # [N]
         
+        # IMPORTANT: Replace empty_value (-10000) with 0 for empty regions
+        # Empty voxels should have sigma=0 (no density), not a large negative value
+        # This is crucial for proper training with softplus activation
+        gt_sigma = torch.where(
+            gt_sigma < self.empty_value + 1.0,  # Values close to empty_value
+            torch.zeros_like(gt_sigma),          # Replace with 0
+            gt_sigma                              # Keep valid sigma values
+        )
+        
+        # Also clamp any remaining negative sigma to 0 (should be non-negative)
+        gt_sigma = torch.clamp(gt_sigma, min=0.0)
+        
         return world_points, gt_rgb, gt_sigma
 
 

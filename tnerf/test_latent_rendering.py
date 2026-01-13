@@ -435,23 +435,32 @@ def print_sample_predictions(
     embeddirs_fn,
     n_samples: int = 10,
     device: torch.device = None,
+    gt_images: List[np.ndarray] = None,
+    K: torch.Tensor = None,
+    c2w: torch.Tensor = None,
+    near: float = 0.1,
+    far: float = 10.0,
+    scene_bounds: Tuple[float, float] = (-1.0, 1.0),
 ):
     """
     Print sample point predictions (RGB, sigma) for debugging.
     
-    Samples random 3D points and queries their RGB/sigma values.
+    If gt_images, K, c2w are provided, samples rays from GT image pixels,
+    queries tri-plane along the rays, renders pixel color, and compares with GT.
     """
-    print("\n" + "="*60)
+    print("\n" + "="*80)
     print("Sample Point Predictions (Tri-plane Query)")
-    print("="*60)
+    print("="*80)
     
-    # Generate random sample points in normalized [-1, 1] space
+    # -------------------------------------------------------------------------
+    # Part 1: Random 3D point sampling (original behavior)
+    # -------------------------------------------------------------------------
+    print("\n[Part 1] Random 3D Point Sampling:")
     torch.manual_seed(42)
     sample_points = torch.rand(1, n_samples, 3, device=device) * 2 - 1  # [-1, 1]
     sample_dirs = torch.randn(1, n_samples, 3, device=device)
     sample_dirs = sample_dirs / torch.norm(sample_dirs, dim=-1, keepdim=True)
     
-    # Query tri-planes
     with torch.no_grad():
         sigma, rgb = latent_head.query_points(
             xy_plane, xz_plane, yz_plane,
@@ -460,7 +469,7 @@ def print_sample_predictions(
             dir_enc_fn=lambda x: embeddirs_fn(x.reshape(-1, 3)).reshape(x.shape[0], x.shape[1], -1),
         )
     
-    print(f"\n{'Idx':<5} {'Point (x,y,z)':<30} {'Dir (x,y,z)':<30} {'Sigma':<12} {'RGB (r,g,b)':<20}")
+    print(f"\n{'Idx':<5} {'Point (x,y,z)':<30} {'Dir (x,y,z)':<30} {'Sigma':<12} {'Pred RGB':<20}")
     print("-" * 100)
     
     for i in range(n_samples):
@@ -475,10 +484,127 @@ def print_sample_predictions(
         
         print(f"{i:<5} {pt_str:<30} {dir_str:<30} {s:<12.4f} {rgb_str:<20}")
     
-    print("\nStatistics:")
+    print("\nRandom Point Statistics:")
     print(f"  Sigma - min: {sigma.min().item():.4f}, max: {sigma.max().item():.4f}, mean: {sigma.mean().item():.4f}")
     print(f"  RGB   - min: {rgb.min().item():.4f}, max: {rgb.max().item():.4f}, mean: {rgb.mean().item():.4f}")
-    print("="*60 + "\n")
+    
+    # -------------------------------------------------------------------------
+    # Part 2: Ray-based sampling with GT comparison (if available)
+    # -------------------------------------------------------------------------
+    if gt_images is not None and K is not None and c2w is not None and len(gt_images) > 0:
+        print("\n" + "-"*80)
+        print("[Part 2] Ray-based Sampling with GT Comparison:")
+        
+        gt_img = gt_images[0]  # Use first GT image
+        H, W = gt_img.shape[:2]
+        
+        # Sample random pixels
+        np.random.seed(42)
+        n_rays = min(n_samples, 10)
+        pixel_ys = np.random.randint(0, H, n_rays)
+        pixel_xs = np.random.randint(0, W, n_rays)
+        
+        # Get GT pixel colors
+        gt_colors = gt_img[pixel_ys, pixel_xs] / 255.0  # [n_rays, 3]
+        
+        # Generate rays for these pixels
+        rays_o, rays_d = get_rays(H, W, K, c2w)
+        selected_rays_o = rays_o[pixel_ys, pixel_xs]  # [n_rays, 3]
+        selected_rays_d = rays_d[pixel_ys, pixel_xs]  # [n_rays, 3]
+        
+        # Sample points along rays
+        N_samples_per_ray = 64
+        t_vals = torch.linspace(0., 1., steps=N_samples_per_ray, device=device)
+        z_vals = near * (1. - t_vals) + far * t_vals
+        z_vals = z_vals.unsqueeze(0).expand(n_rays, -1)  # [n_rays, N_samples]
+        
+        pts = selected_rays_o[..., None, :] + selected_rays_d[..., None, :] * z_vals[..., :, None]
+        # pts: [n_rays, N_samples, 3]
+        
+        # Normalize points to [-1, 1]
+        bound_min, bound_max = scene_bounds
+        pts_normalized = 2.0 * (pts - bound_min) / (bound_max - bound_min) - 1.0
+        pts_normalized = pts_normalized.clamp(-1, 1)
+        
+        # Get viewing directions
+        viewdirs = selected_rays_d / torch.norm(selected_rays_d, dim=-1, keepdim=True)
+        viewdirs = viewdirs[:, None].expand(pts.shape)  # [n_rays, N_samples, 3]
+        
+        # Flatten for batch query
+        pts_flat = pts_normalized.reshape(1, -1, 3)
+        viewdirs_flat = viewdirs.reshape(1, -1, 3)
+        
+        with torch.no_grad():
+            sigma_ray, rgb_ray = latent_head.query_points(
+                xy_plane, xz_plane, yz_plane,
+                pts_flat, viewdirs_flat,
+                pos_enc_fn=lambda x: embed_fn(x.reshape(-1, 3)).reshape(x.shape[0], x.shape[1], -1),
+                dir_enc_fn=lambda x: embeddirs_fn(x.reshape(-1, 3)).reshape(x.shape[0], x.shape[1], -1),
+            )
+        
+        # Reshape: [1, n_rays*N_samples, C] -> [n_rays, N_samples, C]
+        sigma_ray = sigma_ray.reshape(n_rays, N_samples_per_ray, 1)
+        rgb_ray = rgb_ray.reshape(n_rays, N_samples_per_ray, 3)
+        
+        # Volume rendering for each ray
+        raw2alpha = lambda sigma_val, dists: 1. - torch.exp(-F.relu(sigma_val) * dists)
+        dists = z_vals[..., 1:] - z_vals[..., :-1]
+        dists = torch.cat([dists, torch.full_like(dists[..., :1], 1e10)], -1)
+        dists = dists * torch.norm(selected_rays_d[..., None, :], dim=-1)
+        
+        sigma_squeezed = sigma_ray.squeeze(-1)
+        alpha = raw2alpha(sigma_squeezed, dists)
+        
+        weights = alpha * torch.cumprod(
+            torch.cat([torch.ones((n_rays, 1), device=device), 1. - alpha + 1e-10], -1), -1
+        )[:, :-1]
+        
+        rendered_rgb = torch.sum(weights[..., None] * rgb_ray, dim=1)  # [n_rays, 3]
+        acc = torch.sum(weights, dim=1)  # [n_rays]
+        rendered_rgb = rendered_rgb + (1. - acc[..., None])  # white background
+        
+        print(f"\n{'Idx':<5} {'Pixel (y,x)':<15} {'GT RGB':<25} {'Pred RGB':<25} {'Acc':<10} {'Max Sigma':<12} {'Mean Sigma':<12}")
+        print("-" * 120)
+        
+        for i in range(n_rays):
+            gt_c = gt_colors[i]
+            pred_c = rendered_rgb[i].cpu().numpy()
+            acc_val = acc[i].item()
+            max_sigma = sigma_ray[i].max().item()
+            mean_sigma = sigma_ray[i].mean().item()
+            
+            gt_str = f"({gt_c[0]:.3f}, {gt_c[1]:.3f}, {gt_c[2]:.3f})"
+            pred_str = f"({pred_c[0]:.3f}, {pred_c[1]:.3f}, {pred_c[2]:.3f})"
+            
+            print(f"{i:<5} ({pixel_ys[i]:3d},{pixel_xs[i]:3d})      {gt_str:<25} {pred_str:<25} {acc_val:<10.4f} {max_sigma:<12.4f} {mean_sigma:<12.4f}")
+        
+        print("\nRay Statistics:")
+        print(f"  Sigma along rays - min: {sigma_ray.min().item():.4f}, max: {sigma_ray.max().item():.4f}, mean: {sigma_ray.mean().item():.4f}")
+        print(f"  Accumulation (opacity) - min: {acc.min().item():.4f}, max: {acc.max().item():.4f}, mean: {acc.mean().item():.4f}")
+        print(f"  Alpha values - min: {alpha.min().item():.4f}, max: {alpha.max().item():.4f}, mean: {alpha.mean().item():.4f}")
+        
+        # Compute per-ray error
+        gt_tensor = torch.from_numpy(gt_colors).float().to(device)
+        mse_per_ray = ((rendered_rgb - gt_tensor) ** 2).mean(dim=1)
+        print(f"  MSE per ray - min: {mse_per_ray.min().item():.4f}, max: {mse_per_ray.max().item():.4f}, mean: {mse_per_ray.mean().item():.4f}")
+        
+        print("\n[DIAGNOSIS] Problem Analysis:")
+        if sigma_ray.max().item() < 1.0:
+            print("  ⚠️  Sigma values are too small (max < 1.0)!")
+            print("      This causes alpha ≈ 0, making all points nearly transparent.")
+            print("      Rendered colors will be close to background (white).")
+            print("      Possible causes:")
+            print("        1. Model not trained long enough")
+            print("        2. Latent head output scale is wrong (need larger sigma)")
+            print("        3. Scene bounds mismatch (points outside tri-plane coverage)")
+        if acc.mean().item() < 0.1:
+            print("  ⚠️  Accumulation (opacity) is very low!")
+            print("      Most rays pass through without hitting any surface.")
+        if sigma_ray.min().item() < 0:
+            print("  ⚠️  Negative sigma values detected!")
+            print("      Consider adding ReLU or softplus to sigma output in latent_head.")
+    
+    print("="*80 + "\n")
 
 
 # ============================================================================
@@ -586,20 +712,6 @@ def test_latent_rendering(args):
     output_dir = output_dir / f"latent_test_{timestamp}"
     output_dir.mkdir(parents=True, exist_ok=True)
     
-    # Print sample point predictions
-    print_sample_predictions(
-        xy_plane, xz_plane, yz_plane,
-        latent_head, embed_fn, embeddirs_fn,
-        n_samples=args.n_print_samples,
-        device=device,
-    )
-    
-    # Visualize tri-planes
-    create_triplane_visualization(
-        xy_plane, xz_plane, yz_plane,
-        str(output_dir / "triplane_features.png")
-    )
-    
     # Rendering parameters
     H, W = args.H, args.W
     K = generate_intrinsics(H, W, args.fov)
@@ -618,6 +730,38 @@ def test_latent_rendering(args):
         radius=radius,
         num_views=num_render_views,
         elevation_deg=args.elevation
+    )
+    
+    # Load GT images for comparison (needed for print_sample_predictions)
+    gt_images = []
+    for path in input_paths[:min(4, len(input_paths))]:
+        img = np.array(Image.open(path).resize((W, H)))
+        if img.shape[-1] == 4:
+            img = img[:, :, :3]
+        gt_images.append(img)
+    
+    # Get first camera pose for sample predictions
+    first_pose = render_poses[0] if render_poses else None
+    first_c2w = torch.from_numpy(first_pose[:3, :4]).float().to(device) if first_pose is not None else None
+    
+    # Print sample point predictions with GT comparison
+    print_sample_predictions(
+        xy_plane, xz_plane, yz_plane,
+        latent_head, embed_fn, embeddirs_fn,
+        n_samples=args.n_print_samples,
+        device=device,
+        gt_images=gt_images,
+        K=K,
+        c2w=first_c2w,
+        near=near,
+        far=far,
+        scene_bounds=scene_bounds,
+    )
+    
+    # Visualize tri-planes
+    create_triplane_visualization(
+        xy_plane, xz_plane, yz_plane,
+        str(output_dir / "triplane_features.png")
     )
     
     # Render views
@@ -670,21 +814,13 @@ def test_latent_rendering(args):
         title="Tri-plane Depth Maps"
     )
     
-    # Load GT images for comparison
-    gt_images = []
-    for path in input_paths[:min(4, len(input_paths))]:
-        img = np.array(Image.open(path).resize((W, H)))
-        if img.shape[-1] == 4:
-            img = img[:, :, :3]
-        gt_images.append(img)
-    
-    # Compare with rendered views
+    # Compare with rendered views (gt_images already loaded earlier)
     n_compare = min(len(gt_images), len(rendered_images))
     metrics = []
     if n_compare > 0:
         for i in range(n_compare):
-            psnr = compute_psnr(gt_images[i], rendered_images[i])
-            ssim = compute_ssim(gt_images[i], rendered_images[i])
+            psnr = float(compute_psnr(gt_images[i], rendered_images[i]))
+            ssim = float(compute_ssim(gt_images[i], rendered_images[i]))
             metrics.append({'view_idx': i, 'psnr': psnr, 'ssim': ssim})
             print(f"View {i}: PSNR={psnr:.2f}, SSIM={ssim:.4f}")
         

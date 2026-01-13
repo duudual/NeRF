@@ -109,9 +109,11 @@ class BatchedNeRFMLP(nn.Module):
         h = h + self.pos_bias.unsqueeze(1)  # [B, N, 128]
         h = F.relu(h)
         
-        # sigma = h @ sigma_weight.T + sigma_bias
+        # sigma = softplus(h @ sigma_weight.T + sigma_bias) * scale
+        # softplus ensures non-negative sigma values for volume rendering
         sigma = torch.bmm(h, self.sigma_weight.transpose(1, 2))  # [B, N, 1]
         sigma = sigma + self.sigma_bias.unsqueeze(1)
+        sigma = F.softplus(sigma) * 10.0  # Scale factor for typical NeRF sigma range
         sigma = sigma.squeeze(-1)  # [B, N]
         
         # color = sigmoid(cat(h, dir_encoded) @ color_weight.T + color_bias)

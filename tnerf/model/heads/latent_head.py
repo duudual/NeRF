@@ -102,6 +102,11 @@ class TriplaneMLP(nn.Module):
         Input: plane_features (96) + pos_enc (63) + dir_enc (27) = 186
         Hidden: 128 -> 128
         Output: 4 (RGB + sigma)
+    
+    Note on sigma activation:
+        Sigma must be non-negative for volume rendering. We use softplus(x) = log(1 + exp(x))
+        which is smooth and allows gradients to flow even for negative pre-activation values.
+        We also apply a scale factor (default=10.0) to allow sigma to reach typical NeRF ranges (0-100+).
     """
     
     # Positional encoding dimensions
@@ -109,8 +114,10 @@ class TriplaneMLP(nn.Module):
     DIR_ENC_DIM = 27   # 3 + 3 * 2 * 4
     PLANE_FEAT_DIM = 96  # 32 * 3 planes
     
-    def __init__(self, hidden_dim: int = 128):
+    def __init__(self, hidden_dim: int = 128, sigma_scale: float = 10.0):
         super().__init__()
+        
+        self.sigma_scale = sigma_scale  # Scale factor for sigma output
         
         input_dim = self.PLANE_FEAT_DIM + self.POS_ENC_DIM
         
@@ -122,7 +129,7 @@ class TriplaneMLP(nn.Module):
             nn.ReLU(inplace=True),
         )
         
-        # Sigma output (density)
+        # Sigma output (density) - will apply softplus activation in forward
         self.sigma_net = nn.Linear(hidden_dim, 1)
         
         # Color output (with view direction)
@@ -143,9 +150,10 @@ class TriplaneMLP(nn.Module):
                 if m.bias is not None:
                     nn.init.zeros_(m.bias)
         
-        # Initialize sigma output with small weights
-        nn.init.normal_(self.sigma_net.weight, std=0.01)
-        nn.init.zeros_(self.sigma_net.bias)
+        # Initialize sigma output - slightly larger std to allow meaningful density predictions
+        # With softplus activation, this will produce initial sigma values around 0.5-2.0
+        nn.init.normal_(self.sigma_net.weight, std=0.1)
+        nn.init.constant_(self.sigma_net.bias, -1.0)  # Bias to start with lower sigma (softplus(-1) ≈ 0.31)
     
     def forward(
         self, 
@@ -171,8 +179,9 @@ class TriplaneMLP(nn.Module):
         # Process through position network
         h = self.pos_net(x)
         
-        # Sigma output
-        sigma = self.sigma_net(h)
+        # Sigma output with softplus activation (ensures non-negative) and scaling
+        sigma_raw = self.sigma_net(h)
+        sigma = F.softplus(sigma_raw) * self.sigma_scale  # Non-negative, scaled
         
         # Color output with view direction
         h_with_dir = torch.cat([h, dir_encoded], dim=-1)
@@ -206,6 +215,7 @@ class LatentHead(nn.Module):
         intermediate_layer_idx (List[int]): Indices of layers from aggregated tokens.
         pos_embed (bool): Whether to use positional embedding. Default is True.
         mlp_hidden_dim (int): Hidden dimension for the shared MLP. Default is 128.
+        sigma_scale (float): Scale factor for sigma output. Default is 10.0.
     """
     
     def __init__(
@@ -219,6 +229,7 @@ class LatentHead(nn.Module):
         intermediate_layer_idx: List[int] = [4, 11, 17, 23],
         pos_embed: bool = True,
         mlp_hidden_dim: int = 128,
+        sigma_scale: float = 10.0,
     ) -> None:
         super(LatentHead, self).__init__()
         
@@ -227,6 +238,7 @@ class LatentHead(nn.Module):
         self.intermediate_layer_idx = intermediate_layer_idx
         self.plane_size = plane_size
         self.plane_feat_dim = plane_feat_dim
+        self.sigma_scale = sigma_scale
         
         self.norm = nn.LayerNorm(dim_in)
         
@@ -291,7 +303,7 @@ class LatentHead(nn.Module):
         )
         
         # Shared MLP for querying
-        self.query_mlp = TriplaneMLP(hidden_dim=mlp_hidden_dim)
+        self.query_mlp = TriplaneMLP(hidden_dim=mlp_hidden_dim, sigma_scale=sigma_scale)
         
         self._init_plane_generators()
     
