@@ -562,13 +562,9 @@ def test_latent_rendering(args):
     with torch.no_grad():
         predictions = vggt_model(images_tensor)
     
-    if "latent" not in predictions:
-        raise RuntimeError("VGGT model did not produce latent predictions. Make sure enable_latent=True")
-    
-    latent_output = predictions["latent"]
-    xy_plane = latent_output["xy_plane"]  # [B, 32, 64, 64]
-    xz_plane = latent_output["xz_plane"]
-    yz_plane = latent_output["yz_plane"]
+    xy_plane = predictions["xy_plane"]  # [B, 32, 64, 64]
+    xz_plane = predictions["xz_plane"]
+    yz_plane = predictions["yz_plane"]
     
     print(f"\nTri-plane shapes:")
     print(f"  XY plane: {xy_plane.shape}")
