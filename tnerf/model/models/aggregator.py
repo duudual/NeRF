@@ -192,6 +192,27 @@ class Aggregator(nn.Module):
                 The list of outputs from the attention blocks,
                 and the patch_start_idx indicating where patch tokens begin.
         """
+        # Phase 1: Extract patch tokens from DINOv2
+        patch_tokens, B, S, H, W = self.encode_patches(images)
+        
+        # Phase 2: Run aggregator blocks with patch tokens
+        return self.forward_from_patches(patch_tokens, B, S, H, W)
+
+    def encode_patches(self, images: torch.Tensor) -> Tuple[torch.Tensor, int, int, int, int]:
+        """
+        Phase 1: Extract patch tokens from DINOv2 backbone.
+        
+        Args:
+            images (torch.Tensor): Input images with shape [B, S, 3, H, W], in range [0, 1].
+        
+        Returns:
+            (torch.Tensor, int, int, int, int):
+                patch_tokens: DINOv2 patch features with shape [B*S, P, C]
+                B: batch size
+                S: sequence length  
+                H: image height
+                W: image width
+        """
         B, S, C_in, H, W = images.shape
 
         if C_in != 3:
@@ -207,6 +228,31 @@ class Aggregator(nn.Module):
         if isinstance(patch_tokens, dict):
             patch_tokens = patch_tokens["x_norm_patchtokens"]
 
+        return patch_tokens, B, S, H, W
+
+    def forward_from_patches(
+        self, 
+        patch_tokens: torch.Tensor, 
+        B: int, 
+        S: int, 
+        H: int, 
+        W: int
+    ) -> Tuple[List[torch.Tensor], int]:
+        """
+        Phase 2: Run aggregator blocks from pre-computed patch tokens.
+        
+        Args:
+            patch_tokens: DINOv2 patch features with shape [B*S, P, C]
+            B: batch size
+            S: sequence length
+            H: image height
+            W: image width
+        
+        Returns:
+            (list[torch.Tensor], int):
+                The list of outputs from the attention blocks,
+                and the patch_start_idx indicating where patch tokens begin.
+        """
         _, P, C = patch_tokens.shape
 
         # Expand camera and register tokens to match batch size and sequence length
@@ -218,13 +264,13 @@ class Aggregator(nn.Module):
 
         pos = None
         if self.rope is not None:
-            pos = self.position_getter(B * S, H // self.patch_size, W // self.patch_size, device=images.device)
+            pos = self.position_getter(B * S, H // self.patch_size, W // self.patch_size, device=patch_tokens.device)
 
         if self.patch_start_idx > 0:
             # do not use position embedding for special tokens (camera and register tokens)
             # so set pos to 0 for the special tokens
             pos = pos + 1
-            pos_special = torch.zeros(B * S, self.patch_start_idx, 2).to(images.device).to(pos.dtype)
+            pos_special = torch.zeros(B * S, self.patch_start_idx, 2).to(patch_tokens.device).to(pos.dtype)
             pos = torch.cat([pos_special, pos], dim=1)
 
         # update P because we added special tokens
