@@ -15,6 +15,7 @@ Pipeline:
 Usage:
     # Test with custom multi-view images
     python test_mlp_rendering.py --images path/to/images --output_dir ./results
+    python test_mlp_rendering.py --images "/media/fengwu/ZX1 1TB/code/cv_finalproject/data/tnerf/images" --near 0.1 --far 5.0
     
     # Test with specific camera parameters
     python test_mlp_rendering.py --images path/to/images --near 0.1 --far 5.0
@@ -40,13 +41,17 @@ from PIL import Image
 # Add parent directories to path
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, SCRIPT_DIR)
-sys.path.insert(0, os.path.dirname(SCRIPT_DIR))  # NeRF/
+# Don't add NeRF/ to avoid conflicts with NeRF/model.py
+# sys.path.insert(0, os.path.dirname(SCRIPT_DIR))  # NeRF/
 sys.path.insert(0, os.path.dirname(os.path.dirname(SCRIPT_DIR)))  # finalproject/
 
+# Import from tnerf's model package
 from model.heads.nlp_head import NeRFMLP
-from rays import get_rays
-from positional_encoding import get_embedder
-from utils import to8b
+
+# Import from NeRF package with explicit path to avoid conflicts
+from NeRF.rays import get_rays
+from NeRF.positional_encoding import get_embedder
+from NeRF.utils import to8b
 
 
 # ============================================================================
