@@ -74,10 +74,14 @@ class FeatureFusionBlock(nn.Module):
     def forward(self, x, residual=None):
         output = x
         if self.has_residual and residual is not None:
+            # Interpolate residual to match x's spatial size if needed
+            if residual.shape[-2:] != x.shape[-2:]:
+                residual = F.interpolate(residual, size=x.shape[-2:], mode="bilinear", align_corners=True)
             output = output + residual
         output = self.resConfUnit(output)
         output = F.interpolate(output, scale_factor=2, mode="bilinear", align_corners=True)
         output = self.out_conv(output)
+        return output
         return output
 
 
