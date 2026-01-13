@@ -1,0 +1,58 @@
+# Configuration for Deformation Network Dynamic NeRF
+# Dataset: hellwarrior from D-NeRF
+
+# Experiment
+expname = dnerf_deformation_hellwarrior
+basedir = ./logs
+
+# Data
+datadir = ../../D_NeRF_Dataset/data/hellwarrior
+half_res = True
+white_bkgd = True
+testskip = 1
+
+# Network type
+network_type = deformation
+
+# Canonical network architecture
+netdepth = 8
+netwidth = 256
+netdepth_fine = 8
+netwidth_fine = 256
+
+# Deformation network architecture
+netdepth_deform = 6
+netwidth_deform = 128
+zero_canonical = True
+
+# Positional encoding
+multires = 10
+multires_views = 4
+multires_time = 10
+use_viewdirs = True
+
+# Training
+N_iters = 200000
+N_rand = 1024
+lrate = 5e-4
+lrate_decay = 250
+chunk = 32768
+netchunk = 65536
+
+# Deformation regularization
+deform_reg_weight = 0.0
+
+# Sampling
+N_samples = 64
+N_importance = 128
+perturb = 1.0
+raw_noise_std = 0.0
+
+# Logging
+i_print = 100
+i_weights = 10000
+i_testset = 50000
+i_video = 50000
+
+# Video
+video_n_frames = 120
