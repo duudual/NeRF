@@ -369,3 +369,89 @@ Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
 2026-01-12 10:50:40,677 - WARNING - Error in batch 22: The size of tensor a (3) must match the size of tensor b (4096) at non-singleton dimension 2
 2026-01-12 10:50:46,225 - WARNING - Error in batch 23: The size of tensor a (3) must match the size of tensor b (4096) at non-singleton dimension 2
 2026-01-12 10:50:52,521 - WARNING - Error in batch 24: The size of tensor a (3) must match the size of tensor b (4096) at non-singleton dimension 2
+2026-01-12 11:00:36,539 - INFO - Device: cuda
+2026-01-12 11:00:36,539 - INFO - Args: {'data_dir': '/media/fengwu/ZX1 1TB/code/cv_finalproject/data/tnerf', 'voxel_dir': '/media/fengwu/ZX1 1TB/code/cv_finalproject/data/NeRF-MAE_pretrain/features', 'pretrained_path': '/media/fengwu/ZX1 1TB/code/cv_finalproject/vggt/model_weights/model.pt', 'checkpoint_dir': '/media/fengwu/ZX1 1TB/code/cv_finalproject/tnerf/checkpoints_tnerf', 'resume': None, 'head_type': 'latent', 'batch_size': 10, 'num_epochs': 100, 'lr': 0.0001, 'weight_decay': 1e-05, 'grad_clip': 1.0, 'image_size': 336, 'num_views': 5, 'min_views': 2, 'max_views': 5, 'num_sample_points': 4096, 'valid_point_ratio': 0.7, 'empty_value': -10000.0, 'freeze_backbone': True, 'freeze_other_heads': True, 'rgb_weight': 1.0, 'sigma_weight': 0.1, 'reg_weight': 0.001, 'tv_weight': 0.01, 'l1_weight': 0.001, 'log_dir': './logs_tnerf', 'log_freq': 50, 'save_freq': 5, 'vis_freq': 200, 'device': 'cuda', 'num_workers': 0, 'early_stop_patience': 10, 'early_stop_min_delta': 0.0001, 'warmup_epochs': 5, 'warmup_start_lr': 1e-06}
+2026-01-12 11:00:36,539 - INFO - Building VGGT model with latent head...
+2026-01-12 11:00:36,547 - INFO - using MLP layer as FFN
+2026-01-12 11:00:45,329 - INFO - Loading pretrained weights from /media/fengwu/ZX1 1TB/code/cv_finalproject/vggt/model_weights/model.pt
+2026-01-12 11:00:48,283 - INFO - Missing: 68, Unexpected: 587
+2026-01-12 11:00:50,068 - INFO - Freezing backbone...
+2026-01-12 11:00:50,071 - INFO - Freezing other heads...
+2026-01-12 11:00:50,075 - INFO - Trainable: 231,534,020 / 1,140,646,340
+2026-01-12 11:00:50,076 - INFO - Scheduler: warmup_epochs=5, warmup_start_lr=1.00e-06
+2026-01-12 11:00:50,076 - INFO - Early stopping: patience=10, min_delta=0.0001
+2026-01-12 11:00:50,076 - INFO - Using TriplaneLoss for LatentHead training
+2026-01-12 11:00:50,076 - INFO - Loading data from /media/fengwu/ZX1 1TB/code/cv_finalproject/data/tnerf
+2026-01-12 11:00:50,076 - INFO - Voxel data from /media/fengwu/ZX1 1TB/code/cv_finalproject/data/NeRF-MAE_pretrain/features
+2026-01-12 11:00:50,078 - INFO - Train batches: 160
+2026-01-12 11:00:50,078 - INFO - Val batches: 20
+2026-01-12 11:00:50,078 - INFO - Starting training...
+2026-01-12 11:17:30,232 - INFO - Epoch 0 - Train: 0.676822
+2026-01-12 11:20:02,684 - INFO - Epoch 0 - Val: rgb=0.271393, sigma=4.135252, total=0.685055
+2026-01-12 11:20:02,685 - INFO - Learning rate: 2.08e-05
+2026-01-12 11:20:34,822 - INFO - Saved checkpoint: /media/fengwu/ZX1 1TB/code/cv_finalproject/tnerf/checkpoints_tnerf/latent_checkpoint_0000.pt
+2026-01-12 11:37:56,400 - INFO - Epoch 1 - Train: 0.575128
+2026-01-12 11:40:35,177 - INFO - Epoch 1 - Val: rgb=0.239136, sigma=2.638901, total=0.515445
+2026-01-12 11:40:35,177 - INFO - Learning rate: 4.06e-05
+2026-01-12 11:41:07,645 - INFO - Saved checkpoint: /media/fengwu/ZX1 1TB/code/cv_finalproject/tnerf/checkpoints_tnerf/latent_checkpoint_0001.pt
+2026-01-12 11:58:59,451 - INFO - Epoch 2 - Train: 0.475567
+2026-01-12 12:01:42,831 - INFO - Epoch 2 - Val: rgb=0.194522, sigma=2.615742, total=0.462325
+2026-01-12 12:01:42,831 - INFO - Learning rate: 6.04e-05
+2026-01-12 12:02:15,240 - INFO - Saved checkpoint: /media/fengwu/ZX1 1TB/code/cv_finalproject/tnerf/checkpoints_tnerf/latent_checkpoint_0002.pt
+2026-01-12 12:20:30,683 - INFO - Epoch 3 - Train: 0.433750
+2026-01-12 12:23:09,459 - INFO - Epoch 3 - Val: rgb=0.132481, sigma=2.662964, total=0.404445
+2026-01-12 12:23:09,459 - INFO - Learning rate: 8.02e-05
+2026-01-12 12:23:41,528 - INFO - Saved checkpoint: /media/fengwu/ZX1 1TB/code/cv_finalproject/tnerf/checkpoints_tnerf/latent_checkpoint_0003.pt
+2026-01-12 12:42:00,797 - INFO - Epoch 4 - Train: 0.390975
+2026-01-12 12:45:12,516 - INFO - Epoch 4 - Val: rgb=0.110037, sigma=2.621144, total=0.377412
+2026-01-12 12:45:12,980 - INFO - Learning rate: 1.00e-04
+2026-01-12 12:45:45,001 - INFO - Saved checkpoint: /media/fengwu/ZX1 1TB/code/cv_finalproject/tnerf/checkpoints_tnerf/latent_checkpoint_0004.pt
+2026-01-12 13:04:17,310 - INFO - Epoch 5 - Train: 0.371514
+2026-01-12 13:06:58,985 - INFO - Epoch 5 - Val: rgb=0.098100, sigma=2.597281, total=0.362091
+2026-01-12 13:06:58,986 - INFO - Learning rate: 1.00e-04
+2026-01-12 13:07:31,125 - INFO - Saved checkpoint: /media/fengwu/ZX1 1TB/code/cv_finalproject/tnerf/checkpoints_tnerf/latent_checkpoint_0005.pt
+2026-01-12 13:25:43,539 - INFO - Epoch 6 - Train: 0.360867
+2026-01-12 13:28:25,700 - INFO - Epoch 6 - Val: rgb=0.091110, sigma=2.610421, total=0.356277
+2026-01-12 13:28:25,701 - INFO - Learning rate: 9.99e-05
+2026-01-12 13:30:17,913 - INFO - Saved checkpoint: /media/fengwu/ZX1 1TB/code/cv_finalproject/tnerf/checkpoints_tnerf/latent_checkpoint_0006.pt
+2026-01-12 13:48:24,678 - INFO - Epoch 7 - Train: 0.352947
+2026-01-12 13:51:06,545 - INFO - Epoch 7 - Val: rgb=0.086210, sigma=2.598957, total=0.349929
+2026-01-12 13:51:06,546 - INFO - Learning rate: 9.98e-05
+2026-01-12 13:54:15,457 - INFO - Saved checkpoint: /media/fengwu/ZX1 1TB/code/cv_finalproject/tnerf/checkpoints_tnerf/latent_checkpoint_0007.pt
+2026-01-12 14:12:24,047 - INFO - Epoch 8 - Train: 0.346596
+2026-01-12 14:15:03,287 - INFO - Epoch 8 - Val: rgb=0.081913, sigma=2.572269, total=0.342658
+2026-01-12 14:15:03,288 - INFO - Learning rate: 9.96e-05
+2026-01-12 14:16:45,616 - INFO - Saved checkpoint: /media/fengwu/ZX1 1TB/code/cv_finalproject/tnerf/checkpoints_tnerf/latent_checkpoint_0008.pt
+2026-01-12 14:34:45,750 - INFO - Epoch 9 - Train: 0.341462
+2026-01-12 14:37:25,651 - INFO - Epoch 9 - Val: rgb=0.079196, sigma=2.562933, total=0.338774
+2026-01-12 14:37:25,652 - INFO - Learning rate: 9.93e-05
+2026-01-12 14:39:33,199 - INFO - Saved checkpoint: /media/fengwu/ZX1 1TB/code/cv_finalproject/tnerf/checkpoints_tnerf/latent_checkpoint_0009.pt
+2026-01-12 14:57:45,515 - INFO - Epoch 10 - Train: 0.339956
+2026-01-12 15:00:25,353 - INFO - Epoch 10 - Val: rgb=0.077626, sigma=2.551697, total=0.335992
+2026-01-12 15:00:25,354 - INFO - Learning rate: 9.90e-05
+2026-01-12 15:01:45,479 - INFO - Saved checkpoint: /media/fengwu/ZX1 1TB/code/cv_finalproject/tnerf/checkpoints_tnerf/latent_checkpoint_0010.pt
+2026-01-12 15:20:26,078 - INFO - Epoch 11 - Train: 0.336223
+2026-01-12 15:23:05,015 - INFO - Epoch 11 - Val: rgb=0.076228, sigma=2.575036, total=0.336909
+2026-01-12 15:23:05,016 - INFO - Learning rate: 9.87e-05
+2026-01-12 15:39:27,290 - INFO - Epoch 12 - Train: 0.334916
+2026-01-12 15:41:59,634 - INFO - Epoch 12 - Val: rgb=0.081719, sigma=2.577081, total=0.342322
+2026-01-12 15:41:59,635 - INFO - Learning rate: 9.83e-05
+2026-01-12 15:58:24,082 - INFO - Epoch 13 - Train: 0.333256
+2026-01-12 16:00:56,552 - INFO - Epoch 13 - Val: rgb=0.074631, sigma=2.580998, total=0.335463
+2026-01-12 16:00:56,553 - INFO - Learning rate: 9.78e-05
+2026-01-12 16:03:00,242 - INFO - Saved checkpoint: /media/fengwu/ZX1 1TB/code/cv_finalproject/tnerf/checkpoints_tnerf/latent_checkpoint_0013.pt
+2026-01-12 16:19:34,311 - INFO - Epoch 14 - Train: 0.332351
+2026-01-12 16:22:05,872 - INFO - Epoch 14 - Val: rgb=0.075889, sigma=2.556449, total=0.334356
+2026-01-12 16:22:05,872 - INFO - Learning rate: 9.73e-05
+2026-01-12 16:24:43,236 - INFO - Saved checkpoint: /media/fengwu/ZX1 1TB/code/cv_finalproject/tnerf/checkpoints_tnerf/latent_checkpoint_0014.pt
+2026-01-12 16:42:50,733 - INFO - Epoch 15 - Train: 0.330364
+2026-01-12 16:45:32,024 - INFO - Epoch 15 - Val: rgb=0.075278, sigma=2.561816, total=0.334376
+2026-01-12 16:45:32,025 - INFO - Learning rate: 9.68e-05
+2026-01-12 17:02:12,756 - INFO - Epoch 16 - Train: 0.328920
+2026-01-12 17:04:45,102 - INFO - Epoch 16 - Val: rgb=0.075029, sigma=2.544774, total=0.332063
+2026-01-12 17:04:45,103 - INFO - Learning rate: 9.62e-05
+2026-01-12 17:06:05,791 - INFO - Saved checkpoint: /media/fengwu/ZX1 1TB/code/cv_finalproject/tnerf/checkpoints_tnerf/latent_checkpoint_0016.pt
+2026-01-12 17:24:49,462 - INFO - Epoch 17 - Train: 0.328270
+2026-01-12 17:27:30,647 - INFO - Epoch 17 - Val: rgb=0.073626, sigma=2.546676, total=0.330599
+2026-01-12 17:27:30,647 - INFO - Learning rate: 9.55e-05
+2026-01-12 17:29:42,419 - INFO - Saved checkpoint: /media/fengwu/ZX1 1TB/code/cv_finalproject/tnerf/checkpoints_tnerf/latent_checkpoint_0017.pt
