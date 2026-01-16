@@ -50,10 +50,12 @@ def run_network_dnerf(inputs, viewdirs, times, fn, embed_fn, embeddirs_fn,
                       embed_time_fn, netchunk=1024*64, network_type='deformation'):
     """Prepares inputs and applies dynamic network 'fn'.
     
+    This function now matches the official D-NeRF run_network() function.
+    
     Args:
-        inputs: [..., 3] input points
-        viewdirs: [..., 3] viewing directions (can be None)
-        times: [..., 1] time values for each point
+        inputs: [N_rays, N_samples, 3] input points
+        viewdirs: [N_rays, 3] viewing directions (can be None)
+        times: [N_rays, N_samples, 1] OR [N_rays, 1] time values
         fn: network function
         embed_fn: positional encoding function for points
         embeddirs_fn: positional encoding function for directions
@@ -62,71 +64,50 @@ def run_network_dnerf(inputs, viewdirs, times, fn, embed_fn, embeddirs_fn,
         network_type: 'straightforward' or 'deformation'
     
     Returns:
-        outputs: [..., output_ch] network outputs
-        dx: [..., 3] deformations (for deformation network)
+        outputs: [N_rays, N_samples, output_ch] network outputs
+        dx: [N_rays, N_samples, 3] deformations (for deformation network)
     """
+    # Get shape info
+    B, N, _ = inputs.shape  # N_rays, N_samples, 3
+    
+    # Official: inputs_flat = torch.reshape(inputs, [-1, inputs.shape[-1]])
     inputs_flat = torch.reshape(inputs, [-1, inputs.shape[-1]])
-    times_flat = torch.reshape(times, [-1, 1])
     
-    # Store raw points for deformation network
-    pts_raw = inputs_flat.clone()
-    
-    # Embed positions
+    # Official: embedded = embed_fn(inputs_flat)
     embedded = embed_fn(inputs_flat)
     
-    # Embed view directions
+    # Handle time tensor format
+    # times can be [N_rays, N_samples, 1] (already expanded) or [N_rays, 1] (per-ray)
+    if times.dim() == 3 and times.shape[1] == N:
+        # Already expanded: [N_rays, N_samples, 1]
+        input_frame_time_flat = torch.reshape(times, [-1, 1])
+    else:
+        # Per-ray times: [N_rays, 1] - need to expand
+        # Official: input_frame_time = frame_time[:, None].expand([B, N, 1])
+        input_frame_time = times[:, None].expand([B, N, 1]) if times.dim() == 2 else times.unsqueeze(1).expand([B, N, 1])
+        input_frame_time_flat = torch.reshape(input_frame_time, [-1, 1])
+    
+    embedded_time = embed_time_fn(input_frame_time_flat)
+    # Official uses [embedded_time, embedded_time] tuple
+    embedded_times = [embedded_time, embedded_time]
+    
+    # Official: embed views
     if viewdirs is not None:
         input_dirs = viewdirs[:, None].expand(inputs.shape)
         input_dirs_flat = torch.reshape(input_dirs, [-1, input_dirs.shape[-1]])
         embedded_dirs = embeddirs_fn(input_dirs_flat)
         embedded = torch.cat([embedded, embedded_dirs], -1)
     
-    # Embed time
-    embedded_time = embed_time_fn(times_flat)
-    
-    # Apply network
-    def network_fn(x):
-        # Split embedded positions and directions
-        if viewdirs is not None:
-            split_size = embedded.shape[-1] - embedded_dirs.shape[-1]
-            pts_embed = x[:, :split_size]
-            views_embed = x[:, split_size:]
-            x_combined = torch.cat([pts_embed, views_embed], -1)
-        else:
-            x_combined = x
-            pts_embed = x
-        
-        # Get time embedding for this batch
-        batch_size = x.shape[0]
-        t_embed = embedded_time[:batch_size]
-        
-        if network_type == 'deformation':
-            # For deformation network, we need raw points
-            raw_pts = pts_raw[:batch_size]
-            return fn(x_combined, t_embed, raw_pts)
-        else:
-            return fn(x_combined, t_embed)
-    
-    # Process in chunks
+    # Process in chunks (batchify)
     all_outputs = []
     all_dx = []
     
     for i in range(0, embedded.shape[0], netchunk):
         chunk_embedded = embedded[i:i+netchunk]
-        chunk_time = embedded_time[i:i+netchunk]
-        chunk_raw = pts_raw[i:i+netchunk]
+        chunk_time = [embedded_times[0][i:i+netchunk], embedded_times[1][i:i+netchunk]]
         
-        if viewdirs is not None:
-            # For view-dependent rendering
-            if network_type == 'deformation':
-                out, dx = fn(chunk_embedded, chunk_time, chunk_raw)
-            else:
-                out, dx = fn(chunk_embedded, chunk_time)
-        else:
-            if network_type == 'deformation':
-                out, dx = fn(chunk_embedded, chunk_time, chunk_raw)
-            else:
-                out, dx = fn(chunk_embedded, chunk_time)
+        # Call network - matches official: fn(embedded, embedded_times)
+        out, dx = fn(chunk_embedded, chunk_time)
         
         all_outputs.append(out)
         all_dx.append(dx)
@@ -134,6 +115,7 @@ def run_network_dnerf(inputs, viewdirs, times, fn, embed_fn, embeddirs_fn,
     outputs_flat = torch.cat(all_outputs, 0)
     dx_flat = torch.cat(all_dx, 0)
     
+    # Reshape back to [N_rays, N_samples, ...]
     outputs = torch.reshape(outputs_flat, list(inputs.shape[:-1]) + [outputs_flat.shape[-1]])
     dx = torch.reshape(dx_flat, list(inputs.shape[:-1]) + [3])
     
@@ -231,7 +213,7 @@ def sample_pdf(bins, weights, N_samples, det=False, pytest=False):
     return samples
 
 
-def render_rays_dnerf(ray_batch, time_val,
+def render_rays_dnerf(ray_batch, time_vals,
                       network_fn,
                       network_query_fn,
                       N_samples,
@@ -252,7 +234,7 @@ def render_rays_dnerf(ray_batch, time_val,
     
     Args:
         ray_batch: [batch_size, ...] ray batch with origins, directions, bounds, viewdirs
-        time_val: float, time value for this batch (0 to 1)
+        time_vals: [batch_size, 1] per-ray time values (0 to 1)
         network_fn: coarse network function
         network_query_fn: function for querying network
         N_samples: number of coarse samples per ray
@@ -297,8 +279,9 @@ def render_rays_dnerf(ray_batch, time_val,
 
     pts = rays_o[..., None, :] + rays_d[..., None, :] * z_vals[..., :, None]
     
-    # Create time tensor with same shape as points
-    times = torch.ones_like(pts[..., :1]) * time_val
+    # Create time tensor with same shape as points - expand per-ray times to per-sample
+    # time_vals: [N_rays, 1] -> times: [N_rays, N_samples, 1]
+    times = time_vals.unsqueeze(1).expand(-1, pts.shape[1], -1)
 
     raw, dx = network_query_fn(pts, viewdirs, times, network_fn)
     rgb_map, disp_map, acc_map, weights, depth_map = raw2outputs(
@@ -314,7 +297,8 @@ def render_rays_dnerf(ray_batch, time_val,
 
         z_vals, _ = torch.sort(torch.cat([z_vals, z_samples], -1), -1)
         pts = rays_o[..., None, :] + rays_d[..., None, :] * z_vals[..., :, None]
-        times = torch.ones_like(pts[..., :1]) * time_val
+        # Expand per-ray times to per-sample for fine network
+        times = time_vals.unsqueeze(1).expand(-1, pts.shape[1], -1)
 
         run_fn = network_fn if network_fine is None else network_fine
         raw, dx = network_query_fn(pts, viewdirs, times, run_fn)
@@ -340,12 +324,12 @@ def render_rays_dnerf(ray_batch, time_val,
     return ret
 
 
-def batchify_rays_dnerf(rays_flat, time_val, chunk=1024*32, **kwargs):
+def batchify_rays_dnerf(rays_flat, time_vals, chunk=1024*32, **kwargs):
     """Render rays in smaller minibatches to avoid OOM.
     
     Args:
         rays_flat: [N_rays, ...] flattened ray batch
-        time_val: time value for this batch
+        time_vals: [N_rays, 1] per-ray time values
         chunk: chunk size
         **kwargs: arguments to pass to render_rays_dnerf
     
@@ -354,7 +338,7 @@ def batchify_rays_dnerf(rays_flat, time_val, chunk=1024*32, **kwargs):
     """
     all_ret = {}
     for i in range(0, rays_flat.shape[0], chunk):
-        ret = render_rays_dnerf(rays_flat[i:i+chunk], time_val, **kwargs)
+        ret = render_rays_dnerf(rays_flat[i:i+chunk], time_vals[i:i+chunk], **kwargs)
         for k in ret:
             if k not in all_ret:
                 all_ret[k] = []
@@ -379,7 +363,7 @@ def get_rays(H, W, K, c2w):
     return rays_o, rays_d
 
 
-def render_dnerf(H, W, K, time_val, chunk=1024*32, rays=None, c2w=None, 
+def render_dnerf(H, W, K, time_vals, chunk=1024*32, rays=None, c2w=None, 
                  near=0., far=1., use_viewdirs=False, c2w_staticcam=None, **kwargs):
     """Render function for dynamic NeRF.
     
@@ -387,7 +371,7 @@ def render_dnerf(H, W, K, time_val, chunk=1024*32, rays=None, c2w=None,
         H: image height
         W: image width
         K: camera intrinsic matrix
-        time_val: time value for rendering (0 to 1)
+        time_vals: time value(s) for rendering - can be a scalar (float) or per-ray tensor [N_rays]
         chunk: chunk size for rendering
         rays: optional ray batch
         c2w: camera-to-world transformation
@@ -418,13 +402,25 @@ def render_dnerf(H, W, K, time_val, chunk=1024*32, rays=None, c2w=None,
 
     rays_o = torch.reshape(rays_o, [-1, 3]).float()
     rays_d = torch.reshape(rays_d, [-1, 3]).float()
+    
+    # Handle time values - can be scalar or per-ray tensor
+    n_rays = rays_o.shape[0]
+    if isinstance(time_vals, (int, float)):
+        time_vals_flat = torch.ones(n_rays, 1, device=rays_o.device) * time_vals
+    elif isinstance(time_vals, torch.Tensor):
+        time_vals_flat = time_vals.reshape(-1, 1).float()
+        if time_vals_flat.shape[0] != n_rays:
+            # If time_vals has different shape, broadcast it
+            time_vals_flat = torch.ones(n_rays, 1, device=rays_o.device) * time_vals_flat.mean()
+    else:
+        time_vals_flat = torch.ones(n_rays, 1, device=rays_o.device) * float(time_vals)
 
     near_t, far_t = near * torch.ones_like(rays_d[..., :1]), far * torch.ones_like(rays_d[..., :1])
     rays = torch.cat([rays_o, rays_d, near_t, far_t], -1)
     if use_viewdirs:
         rays = torch.cat([rays, viewdirs], -1)
 
-    all_ret = batchify_rays_dnerf(rays, time_val, chunk, **kwargs)
+    all_ret = batchify_rays_dnerf(rays, time_vals_flat, chunk, **kwargs)
     for k in all_ret:
         k_sh = list(sh[:-1]) + list(all_ret[k].shape[1:])
         all_ret[k] = torch.reshape(all_ret[k], k_sh)

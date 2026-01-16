@@ -154,13 +154,12 @@ class LPIPSMetric:
         return compute_lpips(img1, img2, self.model)
 
 
-def evaluate_images(pred_imgs, gt_imgs, compute_lpips_flag=True):
+def evaluate_images(pred_imgs, gt_imgs, compute_lpips_flag=False):
     """Evaluate a set of predicted images against ground truth.
     
     Args:
         pred_imgs: [N, H, W, 3] predicted images
         gt_imgs: [N, H, W, 3] ground truth images
-        compute_lpips_flag: whether to compute LPIPS (slower)
     
     Returns:
         metrics: dict with 'psnr', 'ssim', 'lpips' (average over all images)
@@ -173,9 +172,7 @@ def evaluate_images(pred_imgs, gt_imgs, compute_lpips_flag=True):
     n_imgs = pred_imgs.shape[0]
     psnrs = []
     ssims = []
-    lpips_vals = []
     
-    lpips_metric = LPIPSMetric() if compute_lpips_flag else None
     
     for i in range(n_imgs):
         pred = pred_imgs[i]
@@ -184,8 +181,6 @@ def evaluate_images(pred_imgs, gt_imgs, compute_lpips_flag=True):
         psnrs.append(compute_psnr(pred, gt))
         ssims.append(compute_ssim(pred, gt))
         
-        if compute_lpips_flag:
-            lpips_vals.append(lpips_metric.compute(pred, gt))
     
     metrics = {
         'psnr': np.mean(psnrs),
@@ -194,9 +189,6 @@ def evaluate_images(pred_imgs, gt_imgs, compute_lpips_flag=True):
         'ssim_std': np.std(ssims),
     }
     
-    if compute_lpips_flag:
-        metrics['lpips'] = np.mean(lpips_vals)
-        metrics['lpips_std'] = np.std(lpips_vals)
     
     return metrics
 

@@ -110,6 +110,12 @@ def config_parser():
     # Loss options
     parser.add_argument("--deform_reg_weight", type=float, default=0.0,
                         help='weight for deformation regularization loss')
+    
+    # Official weights loading
+    parser.add_argument("--load_official_weights", action='store_true', 
+                        help='load official D-NeRF pre-trained weights')
+    parser.add_argument("--official_ckpt_path", type=str, default=None,
+                        help='path to official D-NeRF checkpoint')
 
     # Logging/saving options
     parser.add_argument("--i_print", type=int, default=100, 
