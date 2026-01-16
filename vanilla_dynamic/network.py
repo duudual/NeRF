@@ -52,8 +52,13 @@ class NeRF(nn.Module):
             self.feature_linear = nn.Linear(W, W)
             self.alpha_linear = nn.Linear(W, 1)
             self.rgb_linear = nn.Linear(W//2, 3)
+            # NOTE: Official D-NeRF uses PyTorch default initialization
+            # No custom bias initialization - let the network learn naturally
         else:
             self.output_linear = nn.Linear(W, output_ch)
+        
+        # NOTE: Official D-NeRF does NOT use any custom weight initialization
+        # PyTorch's default Kaiming initialization works well for ReLU networks
 
     def forward(self, x, ts=None):
         """
@@ -141,19 +146,27 @@ class DNeRF_Straightforward(nn.Module):
             self.feature_linear = nn.Linear(W, W)
             self.alpha_linear = nn.Linear(W, 1)
             self.rgb_linear = nn.Linear(W//2, 3)
+            # NOTE: Official D-NeRF uses PyTorch default initialization
+            # No custom initialization needed
         else:
             self.output_linear = nn.Linear(W, output_ch)
 
-    def forward(self, x, t_embed):
+    def forward(self, x, ts):
         """
         Args:
             x: [N, input_ch + input_ch_views] embedded position + view directions
-            t_embed: [N, input_ch_time] embedded time
+            ts: [N, input_ch_time] embedded time OR [t_embed, t_embed] list (for compatibility)
         
         Returns:
             outputs: [N, 4] (rgb, alpha)
             dx: [N, 3] deformation (zeros for this model)
         """
+        # Handle ts format: can be a list [t, t] (from run_network_dnerf) or a tensor
+        if isinstance(ts, (list, tuple)):
+            t_embed = ts[0]  # Use first element
+        else:
+            t_embed = ts
+        
         input_pts, input_views = torch.split(x, [self.input_ch, self.input_ch_views], dim=-1)
         
         # Concatenate position and time
@@ -323,6 +336,9 @@ class DNeRF_Deformation(nn.Module):
             input_ch=input_ch, input_ch_time=input_ch_time,
             skips=self.skips_deform  # Official uses self.skips
         )
+        
+        # NOTE: Official D-NeRF uses PyTorch default initialization
+        # No custom initialization needed - Kaiming uniform works well for ReLU networks
     
     def _create_time_net(self, D=8, W=256, input_ch=63, input_ch_time=9, skips=[]):
         """
@@ -398,23 +414,29 @@ class DNeRF_Deformation(nn.Module):
             t = ts
         
         # Get raw time for canonical check
-        # Official: cur_time = t[0, 0]
-        # Since include_input=True, the first element of embedded time IS the raw time value
-        cur_time = t[0, 0].item() if t.numel() > 0 else 1.0
+        # Use t_raw if provided (for include_input=False case)
+        # Otherwise assume include_input=True and use t[0, 0]
+        if t_raw is not None:
+            cur_time = t_raw[0, 0].item() if t_raw.numel() > 0 else 1.0
+        else:
+            cur_time = t[0, 0].item() if t.numel() > 0 else 1.0
         
         # At canonical time (t=0), no deformation
         # Official: if cur_time == 0. and self.zero_canonical:
         if cur_time == 0.0 and self.zero_canonical:
-            dx = torch.zeros_like(input_pts[:, :3])
+            dx = torch.zeros(input_pts.shape[0], 3, device=input_pts.device)
             # At t=0, use original embedded points directly
             canonical_input = torch.cat([input_pts, input_views], dim=-1)
         else:
             # Predict deformation: dx = _query_time(embed(x), embed(t))
             dx = self._query_time(input_pts, t, self._time, self._time_out)
             
-            # Get raw points - Official uses input_pts[:, :3] because include_input=True
-            # This means the first 3 dimensions of embedded positions ARE the raw coordinates
-            input_pts_orig = input_pts[:, :3]
+            # Get raw points - use pts_raw if provided, otherwise fall back to input_pts[:, :3]
+            # (input_pts[:, :3] only works if include_input=True in positional encoding)
+            if pts_raw is not None:
+                input_pts_orig = pts_raw
+            else:
+                input_pts_orig = input_pts[:, :3]
             
             # Apply deformation and re-embed
             # Official: input_pts = self.embed_fn(input_pts_orig + dx)

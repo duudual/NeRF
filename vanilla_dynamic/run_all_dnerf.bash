@@ -12,24 +12,56 @@ set -e
 # =============================================================================
 # Configuration
 # =============================================================================
-# SCENES=("bouncingballs" "hellwarrior" "hook" "jumpingjacks" "lego" "mutant" "standup" "trex")
-SCENES=("bouncingballs")
-# METHODS=("straightforward" "deformation")
-METHODS=("deformation")
+# All D-NeRF dataset scenes
+SCENES=("bouncingballs" "hellwarrior" "hook" "jumpingjacks" "lego" "mutant" "standup" "trex")
 
+# =============================================================================
+# Paths Configuration - Modify according to your environment
+# =============================================================================
+# Windows example:
+# DATA_BASEDIR="D:/lecture/2.0_xk/CV/finalproject/D_NeRF_Dataset/data"
+# MODEL_BASEDIR="D:/lecture/2.0_xk/CV/finalproject/NeRF/vanilla_dynamic"
 
-# Paths
-DATA_BASEDIR="D:/lecture/2.0_xk/CV/finalproject/D_NeRF_Dataset/data"
-MODEL_BASEDIR="D:/lecture/2.0_xk/CV/finalproject/NeRF/vanilla_dynamic"
+# Linux example:
+# DATA_BASEDIR="/media/fengwu/ZX1 1TB/code/cv_finalproject/data/D_NeRF_Dataset/data"
+# MODEL_BASEDIR="/media/fengwu/ZX1 1TB/code/cv_finalproject/dynamic"
 
-# Training parameters
-N_ITERS=200
+# Current configuration:
+# DATA_BASEDIR="D:/lecture/2.0_xk/CV/finalproject/D_NeRF_Dataset/data"
+# MODEL_BASEDIR="D:/lecture/2.0_xk/CV/finalproject/NeRF/vanilla_dynamic"
+
+# =============================================================================
+# Training Parameters
+# =============================================================================
+# Number of training iterations (50000-200000 for good results)
+N_ITERS=10000
+
+# Resolution: use --half_res for 400x400, remove for full 800x800
 HALF_RES="--half_res"
 
-# Video rendering parameters
-VIDEO_N_FRAMES=2
+# Learning rate (default: 5e-4, works well for both methods)
+LRATE="5e-4"
+
+# Learning rate decay (in 1000s of steps)
+LRATE_DECAY=250
+
+# Batch size (rays per gradient step)
+N_RAND=1024
+
+# Number of coarse/fine samples
+N_SAMPLES=64
+N_IMPORTANCE=128
+
+# Logging frequency
+I_PRINT=500
+I_WEIGHTS=10000
+
+# =============================================================================
+# Video Rendering Parameters
+# =============================================================================
+VIDEO_N_FRAMES=120
 VIDEO_FPS=30
-VIDEO_TIME_MODES=("cycle")  # Can add "linear" "fixed" if needed
+VIDEO_TIME_MODES=("cycle")  # Options: "cycle", "linear", "fixed"
 
 # =============================================================================
 # Argument Parsing
@@ -41,8 +73,16 @@ RUN_TRAIN=true
 RUN_RENDER=true
 RUN_EVAL=true
 
+# Methods to run (both by default)
+METHODS=("straightforward" "deformation")
+
 print_usage() {
     echo "Usage: $0 [OPTIONS]"
+    echo ""
+    echo "Dynamic NeRF Training, Rendering, and Evaluation Pipeline"
+    echo ""
+    echo "This script trains both Straightforward (6D) and Deformation network"
+    echo "approaches on D-NeRF dataset scenes, renders videos, and evaluates results."
     echo ""
     echo "Pipeline Control:"
     echo "  --train-only         Run only training stage"
@@ -53,11 +93,18 @@ print_usage() {
     echo "  --skip-eval          Skip evaluation stage"
     echo ""
     echo "Method Selection:"
-    echo "  --straightforward    Run only straightforward method"
-    echo "  --deformation        Run only deformation method"
+    echo "  --straightforward    Run only straightforward method (6D input)"
+    echo "  --deformation        Run only deformation method (canonical + deform net)"
     echo ""
     echo "Scene Selection:"
     echo "  --scene SCENE        Run only specified scene (can be repeated)"
+    echo ""
+    echo "Training Parameters (modify in script header):"
+    echo "  N_ITERS=${N_ITERS}       Training iterations"
+    echo "  LRATE=${LRATE}           Learning rate"
+    echo "  N_RAND=${N_RAND}         Batch size (rays per step)"
+    echo "  N_SAMPLES=${N_SAMPLES}   Coarse samples per ray"
+    echo "  N_IMPORTANCE=${N_IMPORTANCE}  Fine samples per ray"
     echo ""
     echo "Other:"
     echo "  --help               Show this help message"
@@ -69,6 +116,7 @@ print_usage() {
     echo "  $0 --scene lego --straightforward    # Run lego with straightforward only"
     echo "  $0 --skip-train                      # Skip training, only render and evaluate"
     echo "  $0 --train-only                      # Only train models"
+    echo "  $0 --scene bouncingballs --scene lego  # Run two specific scenes"
 }
 
 while [[ $# -gt 0 ]]; do
@@ -206,7 +254,15 @@ if [ "$RUN_TRAIN" = true ]; then
                 --expname "${EXP_NAME}" \
                 --network_type "${NETWORK_TYPE}" \
                 --N_iters ${N_ITERS} \
+                --N_rand ${N_RAND} \
+                --N_samples ${N_SAMPLES} \
+                --N_importance ${N_IMPORTANCE} \
+                --lrate ${LRATE} \
+                --lrate_decay ${LRATE_DECAY} \
                 --use_viewdirs \
+                --i_print ${I_PRINT} \
+                --i_weights ${I_WEIGHTS} \
+                --no_reload \
                 ${HALF_RES} \
                 2>&1 | tee "${MODEL_BASEDIR}/logs/${EXP_NAME}_train.log"
             
@@ -230,7 +286,15 @@ if [ "$RUN_TRAIN" = true ]; then
                 --expname "${EXP_NAME}" \
                 --network_type "${NETWORK_TYPE}" \
                 --N_iters ${N_ITERS} \
+                --N_rand ${N_RAND} \
+                --N_samples ${N_SAMPLES} \
+                --N_importance ${N_IMPORTANCE} \
+                --lrate ${LRATE} \
+                --lrate_decay ${LRATE_DECAY} \
                 --use_viewdirs \
+                --i_print ${I_PRINT} \
+                --i_weights ${I_WEIGHTS} \
+                --no_reload \
                 ${HALF_RES} \
                 2>&1 | tee "${MODEL_BASEDIR}/logs/${EXP_NAME}_train.log"
             
@@ -467,11 +531,6 @@ if [ "$RUN_EVAL" = true ]; then
         echo "" >> "${SUMMARY_FILE}"
     done
     
-    echo "Summary report saved to: ${SUMMARY_FILE}"
-    echo ""
-    cat "${SUMMARY_FILE}"
-fi
-
     echo "Summary report saved to: ${SUMMARY_FILE}"
     echo ""
     cat "${SUMMARY_FILE}"

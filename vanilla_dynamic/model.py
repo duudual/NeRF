@@ -36,15 +36,17 @@ def create_dnerf(args):
         optimizer: optimizer
     """
     # Create embedders for position and view directions
-    embed_fn, input_ch = get_embedder(args.multires, args.i_embed)
+    # If no_include_input is set, don't include raw coordinates in embedding (may help numerical stability)
+    include_input = not getattr(args, 'no_include_input', False)
+    embed_fn, input_ch = get_embedder(args.multires, args.i_embed, input_dims=3, include_input=include_input)
     
     input_ch_views = 0
     embeddirs_fn = None
     if args.use_viewdirs:
-        embeddirs_fn, input_ch_views = get_embedder(args.multires_views, args.i_embed)
+        embeddirs_fn, input_ch_views = get_embedder(args.multires_views, args.i_embed, input_dims=3, include_input=include_input)
     
     # Create embedder for time
-    embed_time_fn, input_ch_time = get_time_embedder(args.multires_time)
+    embed_time_fn, input_ch_time = get_time_embedder(args.multires_time, include_input=include_input)
     
     output_ch = 5 if args.N_importance > 0 else 4
     skips = [4]
@@ -117,7 +119,8 @@ def create_dnerf(args):
         network_type=args.network_type
     )
     
-    # Create optimizer
+    # Create optimizer - matches official D-NeRF
+    # NOTE: Official D-NeRF uses Adam without weight_decay
     optimizer = optim.Adam(params=grad_vars, lr=args.lrate, betas=(0.9, 0.999))
     
     start = 0
@@ -150,13 +153,23 @@ def create_dnerf(args):
         print('Reloading from', ckpt_path)
         ckpt = torch.load(ckpt_path, map_location=device)
         
-        # Check if this is an official D-NeRF checkpoint
-        # Official checkpoints have keys like '_occ.pts_linears.0.weight' directly in network_fn_state_dict
-        # Our checkpoints might have different structure
+        # Check checkpoint format
         state_dict = ckpt.get('network_fn_state_dict', {})
         is_official_format = any(k.startswith('_occ.') or k.startswith('_time.') for k in state_dict.keys())
+        is_old_deform_format = any(k.startswith('canonical_net.') or k.startswith('deform_net.') for k in state_dict.keys())
+        is_straightforward_format = any(k.startswith('pts_linears.') for k in state_dict.keys()) and not is_official_format and not is_old_deform_format
         
-        if is_official_format and args.network_type == 'deformation':
+        # Check if checkpoint matches current network type
+        ckpt_is_deformation = is_official_format or is_old_deform_format
+        ckpt_is_straightforward = is_straightforward_format
+        
+        if args.network_type == 'straightforward' and ckpt_is_deformation:
+            print(f'Warning: Found deformation checkpoint but training straightforward model.')
+            print(f'Skipping incompatible checkpoint, starting from scratch.')
+        elif args.network_type == 'deformation' and ckpt_is_straightforward:
+            print(f'Warning: Found straightforward checkpoint but training deformation model.')
+            print(f'Skipping incompatible checkpoint, starting from scratch.')
+        elif is_official_format and args.network_type == 'deformation':
             # Official D-NeRF checkpoint format - can load directly since our architecture now matches
             print('Detected official D-NeRF checkpoint format - loading directly')
             model.load_state_dict(state_dict, strict=True)
@@ -164,7 +177,7 @@ def create_dnerf(args):
             print(f'✓ Official D-NeRF weights loaded successfully! (step {start})')
             # Don't try to load optimizer - it won't match
         else:
-            # Our own checkpoint format
+            # Our own checkpoint format - should match current network type
             start = ckpt['global_step']
             # Only load optimizer if it matches (skip for inference/rendering)
             try:
@@ -176,6 +189,7 @@ def create_dnerf(args):
             model.load_state_dict(ckpt['network_fn_state_dict'])
             if model_fine is not None and 'network_fine_state_dict' in ckpt:
                 model_fine.load_state_dict(ckpt['network_fine_state_dict'])
+            print(f'✓ Checkpoint loaded successfully! (step {start})')
     elif args.load_official_weights and args.network_type == 'deformation':
         # Load official D-NeRF pre-trained weights
         official_path = args.official_ckpt_path

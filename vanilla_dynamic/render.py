@@ -105,9 +105,11 @@ def run_network_dnerf(inputs, viewdirs, times, fn, embed_fn, embeddirs_fn,
     for i in range(0, embedded.shape[0], netchunk):
         chunk_embedded = embedded[i:i+netchunk]
         chunk_time = [embedded_times[0][i:i+netchunk], embedded_times[1][i:i+netchunk]]
+        chunk_pts_raw = inputs_flat[i:i+netchunk]  # Pass raw coordinates
+        chunk_time_raw = input_frame_time_flat[i:i+netchunk]  # Pass raw time
         
-        # Call network - matches official: fn(embedded, embedded_times)
-        out, dx = fn(chunk_embedded, chunk_time)
+        # Call network - pass raw coordinates for deformation network
+        out, dx = fn(chunk_embedded, chunk_time, pts_raw=chunk_pts_raw, t_raw=chunk_time_raw)
         
         all_outputs.append(out)
         all_dx.append(dx)

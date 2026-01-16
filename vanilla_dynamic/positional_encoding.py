@@ -38,13 +38,14 @@ class Embedder:
         return torch.cat([fn(inputs) for fn in self.embed_fns], -1)
 
 
-def get_embedder(multires, i=0, input_dims=3):
+def get_embedder(multires, i=0, input_dims=3, include_input=True):
     """Get positional encoding embedder for positions/directions.
     
     Args:
         multires: log2 of max freq for positional encoding
         i: set 0 for default positional encoding, -1 for none
         input_dims: input dimension (3 for position, 3 for direction)
+        include_input: whether to include raw input in embedding (default True for official D-NeRF compatibility)
     
     Returns:
         embed: embedding function
@@ -54,7 +55,7 @@ def get_embedder(multires, i=0, input_dims=3):
         return nn.Identity(), input_dims
     
     embed_kwargs = {
-        'include_input': True,
+        'include_input': include_input,
         'input_dims': input_dims,
         'max_freq_log2': multires - 1,
         'num_freqs': multires,

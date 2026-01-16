@@ -79,6 +79,8 @@ def config_parser():
                         help='log2 of max freq for positional encoding (2D direction)')
     parser.add_argument("--multires_time", type=int, default=10,
                         help='log2 of max freq for positional encoding (time)')
+    parser.add_argument("--no_include_input", action='store_true',
+                        help='do not include raw input in positional encoding (may help with numerical stability)')
     parser.add_argument("--raw_noise_std", type=float, default=0., 
                         help='std dev of noise added to regularize sigma')
 
@@ -111,6 +113,10 @@ def config_parser():
     parser.add_argument("--deform_reg_weight", type=float, default=0.0,
                         help='weight for deformation regularization loss')
     
+    # Gradient clipping (to prevent numerical explosion)
+    parser.add_argument("--grad_clip", type=float, default=1.0,
+                        help='gradient clipping max norm (0 to disable)')
+    
     # Official weights loading
     parser.add_argument("--load_official_weights", action='store_true', 
                         help='load official D-NeRF pre-trained weights')
@@ -118,7 +124,7 @@ def config_parser():
                         help='path to official D-NeRF checkpoint')
 
     # Logging/saving options
-    parser.add_argument("--i_print", type=int, default=100, 
+    parser.add_argument("--i_print", type=int, default = 500, 
                         help='frequency of console printout')
     parser.add_argument("--i_img", type=int, default=500, 
                         help='frequency of tensorboard image logging')

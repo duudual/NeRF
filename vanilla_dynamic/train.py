@@ -4,13 +4,15 @@ Dynamic NeRF Training Script
 Usage:
     python train.py --config configs/bouncingballs_deform.txt
     python train.py --datadir "/media/fengwu/ZX1 1TB/code/cv_finalproject/data/D_NeRF_Dataset/data/lego" --expname dnerf_straightforward_lego --N_iters 2000 --use_viewdirs --network_type straightforward --basedir "/media/fengwu/ZX1 1TB/code/cv_finalproject/dynamic"
-"""
+python train.py --datadir "D:/lecture/2.0_xk/CV/finalproject/D_NeRF_Dataset/data/bouncingballs" --expname dnerf_straightforward_bouncingballs --N_iters 50000 --use_viewdirs --network_type straightforward --basedir "./" --half_res --i_print 500
+    """
 
 import os
 import sys
 import time
 import numpy as np
 import torch
+import torch.nn as nn
 import imageio
 from tqdm import tqdm, trange
 
@@ -264,6 +266,13 @@ def train():
             psnr0 = mse2psnr(img_loss0)
         
         loss.backward()
+        
+        # Gradient clipping to prevent numerical explosion
+        # This is critical for D-NeRF training - without it, RGB raw values can explode
+        # causing sigmoid saturation and gradient vanishing
+        if args.grad_clip > 0:
+            nn.utils.clip_grad_norm_(grad_vars, args.grad_clip)
+        
         optimizer.step()
 
         # Update learning rate
@@ -278,6 +287,34 @@ def train():
         # Logging
         if i % args.i_print == 0:
             tqdm.write(f"[TRAIN] Iter: {i} Loss: {loss.item():.5f} PSNR: {psnr.item():.2f} LR: {new_lrate:.2e}")
+            
+            # Render a sample image for visualization
+            vis_dir = os.path.join(basedir, expname, 'vis_train')
+            os.makedirs(vis_dir, exist_ok=True)
+            if i % 2000 == 0:
+                with torch.no_grad():
+                    # Use a fixed test view for consistent comparison
+                    vis_img_i = i_test[0] if len(i_test) > 0 else i_train[0]
+                    vis_pose = poses_tensor[vis_img_i, :3, :4]
+                    vis_time = times_tensor[vis_img_i].item()
+                    vis_target = images_tensor[vis_img_i]
+                    
+                    # Render full image
+                    rgb_vis, _, _, _ = render_dnerf(
+                        H, W, K, vis_time,
+                        chunk=args.chunk, c2w=vis_pose,
+                        **render_kwargs_test
+                    )
+                    
+                    # Compute PSNR on full image
+                    vis_psnr = mse2psnr(img2mse(rgb_vis, vis_target))
+                    
+                    # Save rendered image
+                    rgb_vis_np = to8b(rgb_vis.cpu().numpy())
+                    vis_path = os.path.join(vis_dir, f'iter_{i:06d}_psnr_{vis_psnr.item():.2f}.png')
+                    imageio.imwrite(vis_path, rgb_vis_np)
+                    
+                    tqdm.write(f"[VIS] Saved render to {vis_path} (Full PSNR: {vis_psnr.item():.2f})")
             
             # Update best model
             if psnr.item() > best_psnr:
