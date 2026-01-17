@@ -1,8 +1,8 @@
 """
 Quantitative Evaluation for Dynamic NeRF
 
-This script evaluates trained Dynamic NeRF models and compares
-the two approaches (straightforward vs deformation) quantitatively.
+This script evaluates trained Dynamic NeRF models.
+Can evaluate single models or compare two approaches.
 
 Metrics computed:
 - PSNR (Peak Signal-to-Noise Ratio)
@@ -10,9 +10,25 @@ Metrics computed:
 - LPIPS (Learned Perceptual Image Patch Similarity)
 
 Usage:
-    python evaluate.py --ckpt_straightforward logs/dnerf_straightforward/200000.tar \
-                       --ckpt_deformation logs/dnerf_deformation/200000.tar \
-                       --datadir ../../D_NeRF_Dataset/data/bouncingballs
+    # Evaluate single model
+    python evaluate.py \
+        --ckpt "/path/to/model/best.tar" \
+        --datadir "/path/to/data/lego" \
+        --network_type straightforward \
+        --output_dir "./results/lego_straightforward"
+    
+    # Or use simplified paths
+    python evaluate.py \
+        --data_basedir  "/media/fengwu/ZX1 1TB/code/cv_finalproject/data/D_NeRF_Dataset/data"  \
+        --model_basedir "/media/fengwu/ZX1 1TB/code/cv_finalproject/dynamic" \
+        --scene lego \
+        --network_type straightforward
+    
+    # Compare two models (optional)
+    python evaluate.py \
+        --ckpt_straightforward logs/dnerf_straightforward/best.tar \
+        --ckpt_deformation logs/dnerf_deformation/best.tar \
+        --datadir ../../D_NeRF_Dataset/data/bouncingballs
 """
 
 import os
@@ -99,7 +115,7 @@ def evaluate_model(args, images, poses, times, i_test, hwf, K, save_dir=None):
     pred_images = np.stack(pred_images, 0)
     
     # Compute metrics
-    metrics = evaluate_images(pred_images, gt_images, compute_lpips_flag=True)
+    metrics = evaluate_images(pred_images, gt_images, compute_lpips_flag=False)
     
     return metrics, pred_images
 
@@ -217,22 +233,34 @@ def compare_models(args_straightforward, args_deformation, datadir, output_dir):
 
 def parse_eval_args():
     """Parse evaluation arguments."""
-    parser = argparse.ArgumentParser(description='Evaluate and compare Dynamic NeRF models')
+    parser = argparse.ArgumentParser(description='Evaluate Dynamic NeRF models')
     
-    parser.add_argument('--datadir', type=str, required=True,
+    # Simplified path system (recommended)
+    parser.add_argument('--data_basedir', type=str, default=None,
+                        help='Base directory for datasets')
+    parser.add_argument('--model_basedir', type=str, default=None,
+                        help='Base directory for trained models')
+    parser.add_argument('--scene', type=str, default=None,
+                        help='Scene name (e.g., lego, bouncingballs)')
+    parser.add_argument('--network_type', type=str, default=None,
+                        choices=['straightforward', 'deformation'],
+                        help='Network type for single model evaluation')
+    
+    # Direct path system (legacy, for single model)
+    parser.add_argument('--ckpt', type=str, default=None,
+                        help='Path to model checkpoint (for single model evaluation)')
+    parser.add_argument('--datadir', type=str, default=None,
                         help='Path to D-NeRF dataset')
-    parser.add_argument('--output_dir', type=str, default='./evaluation_results',
+    parser.add_argument('--output_dir', type=str, default=None,
                         help='Directory to save evaluation results')
     
-    # Straightforward model
+    # Comparison mode (legacy, for comparing two models)
     parser.add_argument('--ckpt_straightforward', type=str, default=None,
                         help='Path to straightforward model checkpoint')
-    parser.add_argument('--config_straightforward', type=str, default=None,
-                        help='Config file for straightforward model')
-    
-    # Deformation model
     parser.add_argument('--ckpt_deformation', type=str, default=None,
                         help='Path to deformation model checkpoint')
+    parser.add_argument('--config_straightforward', type=str, default=None,
+                        help='Config file for straightforward model')
     parser.add_argument('--config_deformation', type=str, default=None,
                         help='Config file for deformation model')
     
@@ -249,43 +277,179 @@ def main():
     """Main evaluation function."""
     eval_args = parse_eval_args()
     
-    # Prepare args for each model
+    # Auto-generate paths if using base directory system
+    if eval_args.data_basedir and eval_args.model_basedir and eval_args.scene and eval_args.network_type:
+        # Single model evaluation with simplified paths
+        if not eval_args.datadir:
+            eval_args.datadir = os.path.join(eval_args.data_basedir, eval_args.scene)
+        
+        if not eval_args.ckpt:
+            exp_name = f"dnerf_{eval_args.network_type}_{eval_args.scene}"
+            model_dir = os.path.join(eval_args.model_basedir, exp_name)
+            
+            # Find best checkpoint
+            best_ckpt = os.path.join(model_dir, 'best.tar')
+            if os.path.exists(best_ckpt):
+                eval_args.ckpt = best_ckpt
+                print(f"Using best checkpoint: {eval_args.ckpt}")
+            else:
+                # Find latest checkpoint
+                ckpts = sorted([f for f in os.listdir(model_dir) if f.endswith('.tar') and f != 'latest.tar'])
+                if ckpts:
+                    eval_args.ckpt = os.path.join(model_dir, ckpts[-1])
+                    print(f"Best checkpoint not found, using latest: {eval_args.ckpt}")
+                else:
+                    raise FileNotFoundError(f"No checkpoints found in {model_dir}")
+        
+        if not eval_args.output_dir:
+            eval_args.output_dir = os.path.join(
+                eval_args.model_basedir,
+                f"dnerf_{eval_args.network_type}_{eval_args.scene}",
+                "evaluation"
+            )
+    
+    # Validate paths
+    if not eval_args.datadir:
+        raise ValueError("Must provide --datadir or (--data_basedir + --scene)")
+    
+    if not os.path.exists(eval_args.datadir):
+        raise FileNotFoundError(f"Data directory not found: {eval_args.datadir}")
+    
+    # Set default output directory
+    if not eval_args.output_dir:
+        eval_args.output_dir = './evaluation_results'
+    
+    os.makedirs(eval_args.output_dir, exist_ok=True)
+    
+    # Prepare args for config parser
     config_parser_fn = config_parser()
     
-    args_sf = None
-    args_df = None
+    # Check evaluation mode
+    is_comparison_mode = (eval_args.ckpt_straightforward is not None or 
+                          eval_args.ckpt_deformation is not None)
+    is_single_mode = eval_args.ckpt is not None
     
-    if eval_args.ckpt_straightforward is not None:
-        if eval_args.config_straightforward is not None:
-            args_sf = config_parser_fn.parse_args(['--config', eval_args.config_straightforward])
-        else:
-            args_sf = config_parser_fn.parse_args([])
-        args_sf.network_type = 'straightforward'
-        args_sf.ft_path = eval_args.ckpt_straightforward
-        args_sf.datadir = eval_args.datadir
-        args_sf.half_res = eval_args.half_res
-        args_sf.chunk = eval_args.chunk
+    if is_comparison_mode:
+        # Comparison mode: evaluate and compare two models
+        print("=" * 60)
+        print("Running in COMPARISON MODE")
+        print("=" * 60)
+        
+        args_sf = None
+        args_df = None
+        
+        if eval_args.ckpt_straightforward is not None:
+            if eval_args.config_straightforward is not None:
+                args_sf = config_parser_fn.parse_args(['--config', eval_args.config_straightforward])
+            else:
+                args_sf = config_parser_fn.parse_args([])
+            args_sf.network_type = 'straightforward'
+            args_sf.ft_path = eval_args.ckpt_straightforward
+            args_sf.datadir = eval_args.datadir
+            args_sf.half_res = eval_args.half_res
+            args_sf.chunk = eval_args.chunk
+        
+        if eval_args.ckpt_deformation is not None:
+            if eval_args.config_deformation is not None:
+                args_df = config_parser_fn.parse_args(['--config', eval_args.config_deformation])
+            else:
+                args_df = config_parser_fn.parse_args([])
+            args_df.network_type = 'deformation'
+            args_df.ft_path = eval_args.ckpt_deformation
+            args_df.datadir = eval_args.datadir
+            args_df.half_res = eval_args.half_res
+            args_df.chunk = eval_args.chunk
+        
+        if args_sf is None and args_df is None:
+            print("Error: Please provide at least one checkpoint to evaluate.")
+            print("Use --ckpt_straightforward and/or --ckpt_deformation")
+            return
+        
+        # Run comparison
+        comparison = compare_models(args_sf, args_df, eval_args.datadir, eval_args.output_dir)
+        return comparison
+        
+    elif is_single_mode:
+        # Single model mode: evaluate one model
+        print("=" * 60)
+        print("Running in SINGLE MODEL MODE")
+        print("=" * 60)
+        print(f"Checkpoint: {eval_args.ckpt}")
+        print(f"Data: {eval_args.datadir}")
+        print(f"Output: {eval_args.output_dir}")
+        print(f"Network type: {eval_args.network_type}")
+        print("=" * 60)
+        
+        if not eval_args.network_type:
+            raise ValueError("Must provide --network_type for single model evaluation")
+        
+        if not os.path.exists(eval_args.ckpt):
+            raise FileNotFoundError(f"Checkpoint not found: {eval_args.ckpt}")
+        
+        # Create args for single model
+        args = config_parser_fn.parse_args([])
+        args.network_type = eval_args.network_type
+        args.ft_path = eval_args.ckpt
+        args.datadir = eval_args.datadir
+        args.half_res = eval_args.half_res
+        args.chunk = eval_args.chunk
+        
+        # Load data
+        images, poses, times, render_poses, render_times, hwf, i_split = load_dnerf_data(
+            eval_args.datadir, half_res=eval_args.half_res, testskip=1
+        )
+        i_train, i_val, i_test = i_split
+        
+        H, W, focal = hwf
+        K = np.array([
+            [focal, 0, 0.5 * W],
+            [0, focal, 0.5 * H],
+            [0, 0, 1]
+        ])
+        
+        # Evaluate model
+        print(f"\nEvaluating {eval_args.network_type.upper()} model...")
+        metrics, pred_images = evaluate_model(
+            args, images, poses, times, i_test, hwf, K, eval_args.output_dir
+        )
+        
+        # Print results
+        print("\n" + "=" * 60)
+        print("EVALUATION RESULTS")
+        print("=" * 60)
+        print(f"Model: {eval_args.network_type}")
+        print(f"Checkpoint: {eval_args.ckpt}")
+        print(f"Scene: {os.path.basename(eval_args.datadir)}")
+        print("-" * 60)
+        print(f"PSNR:  {metrics['psnr']:.2f} ± {metrics['psnr_std']:.2f} dB")
+        print(f"SSIM:  {metrics['ssim']:.4f} ± {metrics['ssim_std']:.4f}")
+        if 'lpips' in metrics:
+            print(f"LPIPS: {metrics['lpips']:.4f} ± {metrics['lpips_std']:.4f}")
+        print("=" * 60)
+        
+        # Save metrics to JSON
+        metrics_file = os.path.join(eval_args.output_dir, 'metrics.json')
+        with open(metrics_file, 'w') as f:
+            metrics_json = {
+                'model': eval_args.network_type,
+                'checkpoint': eval_args.ckpt,
+                'scene': os.path.basename(eval_args.datadir),
+                'metrics': {k: float(v) for k, v in metrics.items()}
+            }
+            json.dump(metrics_json, f, indent=2)
+        print(f"\nMetrics saved to: {metrics_file}")
+        
+        return metrics
     
-    if eval_args.ckpt_deformation is not None:
-        if eval_args.config_deformation is not None:
-            args_df = config_parser_fn.parse_args(['--config', eval_args.config_deformation])
-        else:
-            args_df = config_parser_fn.parse_args([])
-        args_df.network_type = 'deformation'
-        args_df.ft_path = eval_args.ckpt_deformation
-        args_df.datadir = eval_args.datadir
-        args_df.half_res = eval_args.half_res
-        args_df.chunk = eval_args.chunk
-    
-    if args_sf is None and args_df is None:
-        print("Error: Please provide at least one checkpoint to evaluate.")
-        print("Use --ckpt_straightforward and/or --ckpt_deformation")
+    else:
+        print("Error: Must provide checkpoint(s) to evaluate.")
+        print("\nFor single model evaluation:")
+        print("  --ckpt <path> --network_type <type> --datadir <path>")
+        print("  OR")
+        print("  --data_basedir <path> --model_basedir <path> --scene <name> --network_type <type>")
+        print("\nFor comparison:")
+        print("  --ckpt_straightforward <path> --ckpt_deformation <path> --datadir <path>")
         return
-    
-    # Run comparison
-    comparison = compare_models(args_sf, args_df, eval_args.datadir, eval_args.output_dir)
-    
-    return comparison
 
 
 if __name__ == '__main__':

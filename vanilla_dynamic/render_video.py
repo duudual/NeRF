@@ -1,10 +1,36 @@
 """
-render a 360-degree video from a trained Dynamic NeRF model.
+Render a 360-degree video from a trained Dynamic NeRF model.
 
-Usage:
-    python render_video.py --ckpt logs/dnerf_deformation/200000.tar \
-                           --datadir ../../D_NeRF_Dataset/data/bouncingballs \
-                           --output_dir ./videos
+Usage Examples:
+
+1. Simple method (recommended) - Automatically finds best checkpoint:
+    python render_video.py \
+        --data_basedir "/media/fengwu/ZX1 1TB/code/cv_finalproject/data/D_NeRF_Dataset/data" \
+        --model_basedir "/media/fengwu/ZX1 1TB/code/cv_finalproject/dynamic" \
+        --scene lego \
+        --network_type straightforward
+    python render_video.py \
+        --data_basedir "/media/fengwu/ZX1 1TB/code/cv_finalproject/data/D_NeRF_Dataset/data" \
+        --model_basedir "/media/fengwu/ZX1 1TB/code/cv_finalproject/dynamic" \
+        --scene lego \
+        --network_type straightforward
+
+python render_video.py \
+    --data_basedir "/media/fengwu/ZX1 1TB/code/cv_finalproject/data/D_NeRF_Dataset/data" \
+    --model_basedir "/media/fengwu/ZX1 1TB/code/cv_finalproject/dynamic" \
+    --scene "lego" \
+    --network_type "straightforward" \
+    --time_mode "linear" \
+    --n_frames 30 \
+    --fps 30 \
+python render_video.py --data_basedir "D:/lecture/2.0_xk/CV/finalproject/D_NeRF_Dataset/data" --scene bouncingballs --network_type deformation --ft_path "D:/lecture/2.0_xk/CV/finalproject/D_NeRF_Dataset/checkpoint/de-ball"\
+Output:
+    - Video will be saved to: {model_basedir}/dnerf_{network_type}_{scene}/videos/
+    - Or custom location if --output_dir is specified
+
+
+
+     python render_video.py    --ckpt "D:/lecture/2.0_xk/CV/finalproject/NeRF/vanilla_dynamic/perturbed_weights/bouncingballs/best.tar"     --data_basedir "D:/lecture/2.0_xk/CV/finalproject/D_NeRF_Dataset/data"     --scene bouncingballs     --network_type deformation     --n_frames 1
 """
 
 import os
@@ -141,7 +167,7 @@ def render_multi_time_video(args, output_dir, n_angles=40, n_times=5, fps=30):
             args, output_path, n_frames=n_angles, fps=fps,
             time_mode='fixed', fixed_time=t
         )
-
+ 
 
 def render_comparison_video(args_sf, args_df, output_path, n_frames=120, fps=30):
     """Render side-by-side comparison video of both approaches.
@@ -224,12 +250,20 @@ def parse_render_args():
     """Parse rendering arguments."""
     parser = argparse.ArgumentParser(description='Render 360 video from Dynamic NeRF')
     
-    parser.add_argument('--ckpt', type=str, required=True,
-                        help='Path to model checkpoint')
-    parser.add_argument('--datadir', type=str, required=True,
+    parser.add_argument('--data_basedir', type=str, default=None,
+                        help='Base directory for datasets (e.g., /path/to/D_NeRF_Dataset/data/)')
+    parser.add_argument('--model_basedir', type=str, default=None,
+                        help='Base directory for trained models (e.g., /path/to/logs/)')
+    parser.add_argument('--scene', type=str, default=None,
+                        help='Scene name (e.g., lego, bouncingballs)')
+    
+    # Old: Direct path system (for backward compatibility)
+    parser.add_argument('--ckpt', type=str, default=None,
+                        help='Path to model checkpoint (or "best" to use best checkpoint)')
+    parser.add_argument('--datadir', type=str, default=None,
                         help='Path to D-NeRF dataset')
-    parser.add_argument('--output_dir', type=str, default='./videos',
-                        help='Directory to save videos')
+    parser.add_argument('--output_dir', type=str, default=None,
+                        help='Directory to save videos (auto-generated if not specified)')
     parser.add_argument('--config', type=str, default=None,
                         help='Path to config file')
     
@@ -260,6 +294,68 @@ def main():
     """Main rendering function."""
     render_args = parse_render_args()
     
+    # Priority 1: Direct checkpoint path specified
+    if render_args.ckpt:
+        print(f"Using specified checkpoint: {render_args.ckpt}")
+        # Still need datadir - either from --datadir or from base paths
+        if not render_args.datadir:
+            if render_args.data_basedir and render_args.scene:
+                render_args.datadir = os.path.join(render_args.data_basedir, render_args.scene)
+            else:
+                raise ValueError("Must provide --datadir or (--data_basedir and --scene) when using --ckpt")
+        
+        # Default output directory based on checkpoint location
+        if not render_args.output_dir:
+            ckpt_dir = os.path.dirname(render_args.ckpt)
+            render_args.output_dir = os.path.join(ckpt_dir, "videos")
+    
+    # Priority 2: Auto-generate paths from base directories
+    elif render_args.data_basedir and render_args.model_basedir and render_args.scene:
+        # Data directory
+        if not render_args.datadir:
+            render_args.datadir = os.path.join(render_args.data_basedir, render_args.scene)
+        
+        # Find checkpoint automatically
+        exp_name = f"dnerf_{render_args.network_type}_{render_args.scene}"
+        model_dir = os.path.join(render_args.model_basedir, exp_name)
+        
+        # Find best checkpoint
+        best_ckpt = os.path.join(model_dir, 'best.tar')
+        if os.path.exists(best_ckpt):
+            render_args.ckpt = best_ckpt
+            print(f"Using best checkpoint: {render_args.ckpt}")
+        else:
+            # Find latest checkpoint
+            ckpts = sorted([f for f in os.listdir(model_dir) if f.endswith('.tar') and f != 'latest.tar'])
+            if ckpts:
+                render_args.ckpt = os.path.join(model_dir, ckpts[-1])
+                print(f"Best checkpoint not found, using latest: {render_args.ckpt}")
+            else:
+                raise FileNotFoundError(f"No checkpoints found in {model_dir}")
+        
+        # Output directory
+        if not render_args.output_dir:
+            render_args.output_dir = os.path.join(
+                render_args.model_basedir,
+                f"dnerf_{render_args.network_type}_{render_args.scene}",
+                "videos"
+            )
+    
+    # Validate paths
+    if not render_args.ckpt or not render_args.datadir:
+        raise ValueError(
+            "Must provide either:\n"
+            "  1. --data_basedir, --model_basedir, --scene, and --network_type\n"
+            "  OR\n"
+            "  2. --ckpt and --datadir"
+        )
+    
+    # Check if files exist
+    if not os.path.exists(render_args.ckpt):
+        raise FileNotFoundError(f"Checkpoint not found: {render_args.ckpt}")
+    if not os.path.exists(render_args.datadir):
+        raise FileNotFoundError(f"Data directory not found: {render_args.datadir}")
+    
     # Parse model config
     config_parser_fn = config_parser()
     if render_args.config is not None:
@@ -274,6 +370,10 @@ def main():
     args.half_res = render_args.half_res
     args.chunk = render_args.chunk
     
+    # Set default output directory
+    if not render_args.output_dir:
+        render_args.output_dir = './videos'
+    
     # Create output directory
     os.makedirs(render_args.output_dir, exist_ok=True)
     
@@ -283,6 +383,17 @@ def main():
         render_args.output_dir,
         f'{basename}_{args.network_type}_{render_args.time_mode}.mp4'
     )
+    
+    print("=" * 60)
+    print("Dynamic NeRF Video Rendering")
+    print("=" * 60)
+    print(f"Data directory: {render_args.datadir}")
+    print(f"Checkpoint: {render_args.ckpt}")
+    print(f"Output: {output_path}")
+    print(f"Network type: {args.network_type}")
+    print(f"Time mode: {render_args.time_mode}")
+    print(f"Frames: {render_args.n_frames} @ {render_args.fps} fps")
+    print("=" * 60)
     
     # Render video
     render_360_video(

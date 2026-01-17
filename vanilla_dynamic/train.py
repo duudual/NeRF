@@ -3,7 +3,7 @@ Dynamic NeRF Training Script
 
 Usage:
     python train.py --config configs/bouncingballs_deform.txt
-    python train.py --datadir ../../D_NeRF_Dataset/data/bouncingballs --network_type straightforward
+    python train.py --datadir "/media/fengwu/ZX1 1TB/code/cv_finalproject/data/D_NeRF_Dataset/data/lego" --expname dnerf_straightforward_lego --N_iters 2000 --use_viewdirs --network_type straightforward --basedir "/media/fengwu/ZX1 1TB/code/cv_finalproject/dynamic"
 """
 
 import os
@@ -132,24 +132,31 @@ def train():
         print('Precomputing rays for batched training...')
         rays = np.stack([get_rays_np(H, W, K, p[:3, :4]) for p in poses[i_train]], 0)
         rays_rgb = np.concatenate([rays, images[i_train, None]], 1)
-        rays_rgb = np.transpose(rays_rgb, [0, 2, 3, 1, 4])
+        rays_rgb = np.transpose(rays_rgb, [0, 2, 3, 1, 4])  # [N_train, H, W, 3, 4]
         
-        # Add time information
+        # Add time information - 每个训练图像对应一个时间
         train_times = times[i_train]
-        # Broadcast time to match rays_rgb shape: [N_train, H, W, 3, 1]
-        rays_time = train_times[:, None, None, None, None]  # [N_train, 1, 1, 1, 1]
-        rays_time = np.broadcast_to(rays_time, [len(i_train), H, W, 3, 1])
-        rays_rgb = np.concatenate([rays_rgb, rays_time], -1)  # [N_train, H, W, 3, 4]
+        # Expand time to [N_train, H, W, 1]
+        rays_time = train_times[:, None, None, None]  # [N_train, 1, 1, 1]
+        rays_time = np.broadcast_to(rays_time, [len(i_train), H, W, 1])
         
-        rays_rgb = rays_rgb.reshape(-1, 3, 4)  # [N, ro+rd+rgb, 4] (last dim: x,y,z,t)
+        # rays_rgb: [N_train, H, W, 3, 3] -> reshape to [N, 3, 3]
+        rays_rgb = rays_rgb.reshape(-1, 3, 3)  # [N, ro+rd+rgb, xyz]
+        rays_time = rays_time.reshape(-1, 1)    # [N, 1]
+        
         rays_rgb = rays_rgb.astype(np.float32)
+        rays_time = rays_time.astype(np.float32)
         
         print('Shuffling rays...')
-        np.random.shuffle(rays_rgb)
-        print(f'Rays shape: {rays_rgb.shape}')
+        # Shuffle both arrays with same permutation
+        perm = np.random.permutation(rays_rgb.shape[0])
+        rays_rgb = rays_rgb[perm]
+        rays_time = rays_time[perm]
+        print(f'Rays shape: {rays_rgb.shape}, Times shape: {rays_time.shape}')
         
         i_batch = 0
         rays_rgb = torch.Tensor(rays_rgb).to(device)
+        rays_time = torch.Tensor(rays_time).to(device)
         
     images_tensor = torch.Tensor(images).to(device)
     poses_tensor = torch.Tensor(poses).to(device)
@@ -162,6 +169,10 @@ def train():
     print(f'TEST views: {i_test}')
     print(f'VAL views: {i_val}')
     
+    # Track best model
+    best_psnr = 0.0
+    best_iter = 0
+    
     start = start + 1
     for i in trange(start, N_iters):
         time0 = time.time()
@@ -169,16 +180,17 @@ def train():
         if use_batching:
             # Random batch of rays from all images
             batch = rays_rgb[i_batch:i_batch + N_rand]
-            batch = torch.transpose(batch, 0, 1)  # [3, N_rand, 4] -> (ro, rd, rgb), each with (x,y,z,t)
-            batch_rays = batch[:2, :, :3]  # [2, N_rand, 3] - only xyz for rays
-            target_s = batch[2, :, :3]     # [N_rand, 3] - rgb values
-            batch_times = batch[0, :, 3]   # [N_rand] - time from rays_o (same for all)
+            batch = torch.transpose(batch, 0, 1)  # [3, N_rand, 3] -> (ro, rd, rgb)
+            batch_rays = batch[:2]  # [2, N_rand, 3] - rays_o and rays_d
+            target_s = batch[2]     # [N_rand, 3] - rgb values
+            batch_times = rays_time[i_batch:i_batch + N_rand, 0]  # [N_rand] - time values
             
             i_batch += N_rand
             if i_batch >= rays_rgb.shape[0]:
                 print("Shuffle data after an epoch!")
                 rand_idx = torch.randperm(rays_rgb.shape[0])
                 rays_rgb = rays_rgb[rand_idx]
+                rays_time = rays_time[rand_idx]
                 i_batch = 0
         else:
             # Random rays from one image
@@ -220,9 +232,9 @@ def train():
             target_s = target[select_coords[:, 0], select_coords[:, 1]]
             batch_times = time_val
 
-        # Render
+        # Render - pass per-ray time values for batched training
         rgb, disp, acc, extras = render_dnerf(
-            H, W, K, batch_times if not use_batching else batch_times.mean().item(),
+            H, W, K, batch_times,
             chunk=args.chunk, rays=batch_rays,
             verbose=i < 10, retraw=True,
             **render_kwargs_train
@@ -234,10 +246,16 @@ def train():
         loss = img_loss
         psnr = mse2psnr(img_loss)
         
-        # Deformation regularization loss
-        if args.deform_reg_weight > 0 and 'dx' in extras:
-            dx_loss = torch.mean(extras['dx'] ** 2)
-            loss = loss + args.deform_reg_weight * dx_loss
+        # Deformation regularization loss (官方实现中的elastic regularization)
+        if args.deform_reg_weight > 0:
+            if 'dx' in extras and extras['dx'] is not None:
+                # L2 regularization on deformation
+                dx_loss = torch.mean(extras['dx'] ** 2)
+                loss = loss + args.deform_reg_weight * dx_loss
+            if 'dx0' in extras and extras['dx0'] is not None:
+                # Coarse network deformation regularization
+                dx_loss0 = torch.mean(extras['dx0'] ** 2)
+                loss = loss + args.deform_reg_weight * dx_loss0
         
         # Fine network loss
         if 'rgb0' in extras:
@@ -260,6 +278,20 @@ def train():
         # Logging
         if i % args.i_print == 0:
             tqdm.write(f"[TRAIN] Iter: {i} Loss: {loss.item():.5f} PSNR: {psnr.item():.2f} LR: {new_lrate:.2e}")
+            
+            # Update best model
+            if psnr.item() > best_psnr:
+                best_psnr = psnr.item()
+                best_iter = i
+                # Save best checkpoint
+                best_path = os.path.join(basedir, expname, 'best.tar')
+                save_checkpoint(
+                    best_path, global_step,
+                    render_kwargs_train['network_fn'],
+                    render_kwargs_train['network_fine'],
+                    optimizer, args
+                )
+                tqdm.write(f"[BEST] New best PSNR: {best_psnr:.2f} at iter {best_iter}")
 
         # Save checkpoint
         if i % args.i_weights == 0:
@@ -298,7 +330,21 @@ def train():
             print('Saved test set')
 
         global_step += 1
-
+    
+    # Save final checkpoint
+    path = os.path.join(basedir, expname, f'latest.tar')
+    save_checkpoint(
+        path, global_step,
+        render_kwargs_train['network_fn'],
+        render_kwargs_train['network_fine'],
+        optimizer, args
+    )
+    
+    print("=" * 60)
+    print("Training completed!")
+    print(f"Best PSNR: {best_psnr:.2f} at iteration {best_iter}")
+    print(f"Best model saved to: {os.path.join(basedir, expname, 'best.tar')}")
+    print("=" * 60)
 
 if __name__ == '__main__':
     train()
