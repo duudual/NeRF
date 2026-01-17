@@ -89,3 +89,13 @@ Run the following command line to evaluate the quality of result on test set. Th
 ```
 python evaluate.py --config configs/xxx.txt --render_test 
 ```
+
+## Citations
+[1] @misc{lin2020nerfpytorch,
+  title={NeRF-pytorch},
+  author={Yen-Chen, Lin},
+  publisher = {GitHub},
+  journal = {GitHub repository},
+  howpublished={\url{https://github.com/yenchenlin/nerf-pytorch/}},
+  year={2020}
+}
