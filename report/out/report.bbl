@@ -1,0 +1,15 @@
+\begin{thebibliography}{1}
+
+\bibitem{irshad2024nerfmae}
+Muhammad~Zubair Irshad, Sergey Zakharov, Vitor Guizilini, Adrien Gaidon, Zsolt
+  Kira, and Rares Ambrus.
+\newblock Nerf-mae: Masked autoencoders for self-supervised 3d representation
+  learning for neural radiance fields.
+\newblock In {\em European Conference on Computer Vision (ECCV)}, 2024.
+
+\bibitem{wang2025vggtvisualgeometrygrounded}
+Jianyuan Wang, Minghao Chen, Nikita Karaev, Andrea Vedaldi, Christian
+  Rupprecht, and David Novotny.
+\newblock Vggt: Visual geometry grounded transformer, 2025.
+
+\end{thebibliography}
