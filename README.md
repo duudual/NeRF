@@ -96,6 +96,6 @@ python evaluate.py --config configs/xxx.txt --render_test
   author={Yen-Chen, Lin},
   publisher = {GitHub},
   journal = {GitHub repository},
-  howpublished={\url{https://github.com/yenchenlin/nerf-pytorch/}},
+  howpublished={\url{https://github.com/yenchenlin/nerf-pytorch?tab=readme-ov-file}},
   year={2020}
 }
