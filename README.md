@@ -5,6 +5,7 @@ NeRF/
 ├── configs/           # Stores configs for different scenes
 ├── data/raw_nerf/     # Stores NeRF dataset
 ├── logs/              # Stores training results/evaluation
+├── task1/             # Stores the result of task1
 ├── config.py          # Argument parsing for model and training parameters
 ├── train.py           # Main NeRF training script
 ├── evaluate.py        # NeRF evaluation and PSNR computation
@@ -24,6 +25,7 @@ NeRF/
 ```
 
 ## Dataset
+You can get the dataset, pretrained weights and result of task1 from [supplementary_material](https://disk.pku.edu.cn/link/AAB3860F8642BC4A1196E5DC1DDA675912) via PKU netdisk.
 ```
 data/
 ├── raw_nerf/
