@@ -1,5 +1,13 @@
 data/raw_nerf/*
 *.pyc
 tnerf/data/tnerf/*
+tnerf/result/*
+
 *.npz
 *.pt
+report/dynamic_novel/*
+report/report.*
+vanilla_dynamic/demo/*
+vanilla_dynamic/perturbed_weights/*
+vanilla_dynamic/checkpoint/*
+

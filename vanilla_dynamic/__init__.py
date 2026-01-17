@@ -9,7 +9,6 @@ from .network import (
     NeRF,
     DNeRF_Straightforward,
     DNeRF_Deformation,
-    DeformationNetwork,
 )
 
 from .model import (
@@ -50,7 +49,6 @@ __all__ = [
     'NeRF',
     'DNeRF_Straightforward',
     'DNeRF_Deformation',
-    'DeformationNetwork',
     
     # Model management
     'create_dnerf',

@@ -81,6 +81,8 @@ def config_parser():
                         help='log2 of max freq for positional encoding (time)')
     parser.add_argument("--no_include_input", action='store_true',
                         help='do not include raw input in positional encoding (may help with numerical stability)')
+    parser.add_argument("--use_layernorm", action='store_true',
+                        help='use LayerNorm in network for training stability (prevents activation explosion)')
     parser.add_argument("--raw_noise_std", type=float, default=0., 
                         help='std dev of noise added to regularize sigma')
 
@@ -116,12 +118,6 @@ def config_parser():
     # Gradient clipping (to prevent numerical explosion)
     parser.add_argument("--grad_clip", type=float, default=1.0,
                         help='gradient clipping max norm (0 to disable)')
-    
-    # Official weights loading
-    parser.add_argument("--load_official_weights", action='store_true', 
-                        help='load official D-NeRF pre-trained weights')
-    parser.add_argument("--official_ckpt_path", type=str, default=None,
-                        help='path to official D-NeRF checkpoint')
 
     # Logging/saving options
     parser.add_argument("--i_print", type=int, default = 500, 

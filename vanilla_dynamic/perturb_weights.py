@@ -8,7 +8,14 @@ This can be used to:
 
 Usage:
     python perturb_weights.py --input_ckpt "D:/lecture/2.0_xk/CV/finalproject/D-NeRF/logs/bouncingballs/800000.tar" --output_base "./perturbed_weights/bouncingballs" --noise_std 0.01 --expname bouncingballs   
-"""
+python perturb_weights.py --input_ckpt "D:/lecture/2.0_xk/CV/finalproject/D-NeRF/logs/hook/800000.tar" --output_base "./perturbed_weights/hook" --noise_std 0.01 --expname hook
+python perturb_weights.py --input_ckpt "D:/lecture/2.0_xk/CV/finalproject/D-NeRF/logs/jumpingjacks/800000.tar" --output_base "./perturbed_weights/jumpingjacks" --noise_std 0.01 --expname jumpingjacks
+python perturb_weights.py --input_ckpt "D:/lecture/2.0_xk/CV/finalproject/D-NeRF/logs/lego/800000.tar" --output_base "./perturbed_weights/lego" --noise_std 0.01 --expname lego
+python perturb_weights.py --input_ckpt "D:/lecture/2.0_xk/CV/finalproject/D-NeRF/logs/mutant/800000.tar" --output_base "./perturbed_weights/mutant" --noise_std 0.01 --expname mutant
+python perturb_weights.py --input_ckpt "D:/lecture/2.0_xk/CV/finalproject/D-NeRF/logs/standup/800000.tar" --output_base "./perturbed_weights/standup" --noise_std 0.01 --expname standup
+python perturb_weights.py --input_ckpt "D:/lecture/2.0_xk/CV/finalproject/D-NeRF/logs/trex/800000.tar" --output_base "./perturbed_weights/trex" --noise_std 0.01 --expname trex
+    
+    """
 
 import os
 import sys
