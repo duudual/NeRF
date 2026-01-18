@@ -188,6 +188,9 @@ The evaluation produces the following metrics:
 - **SSIM** (Structural Similarity): Higher is better
 - **LPIPS** (Learned Perceptual Image Patch Similarity): Lower is better
 
+# Novel NeRF
+* [VGGT-NeRF](https://github.com/DongYu2005/vggt-NeRF): An enhanced version incorporating Visual Geometry Grounded Transformers for better generalizability. (Maintained by Group Member Dongge Yu, @DongYu2005)
+
 # Novel Dynamic NeRF
 
 A dynamic NeRF implementation based on VGGT that performs semantically consistent temporal interpolation in feature space to generate stable representations at intermediate time steps.
